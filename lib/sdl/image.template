@@ -1,0 +1,17 @@
+;;;
+;;; image.scm - Gauche SDL_image binding
+;;;
+
+;;;;;
+;;@type cmd
+;;@@parse-relative #f
+
+(define-module sdl.image
+  (use sdl)
+  (export-all)
+  )
+(select-module sdl.image)
+
+;; Loads extension
+(dynamic-load "gauche-sdl-image")
+

@@ -1,0 +1,41 @@
+CONFIG_GENERATED = Makefile config.cache config.log config.status autom4te*.cache
+.PHONY: test clean install
+
+DESTDIR        =
+INSTALL        = "@GAUCHE_INSTALL@" -C
+GAUCHE_PKGLIBDIR  = "$(DESTDIR)@GAUCHE_PKGLIBDIR@"
+
+PACKAGE = @PACKAGE@
+
+all :
+	cd src; $(MAKE) all
+	cd lib; $(MAKE) all
+
+test : all
+	cd src; $(MAKE) test
+
+clean :
+	rm -rf core *~
+	cd src; $(MAKE) clean
+	cd lib; $(MAKE) clean
+
+distclean : clean
+	cd src; $(MAKE) distclean
+	cd lib; $(MAKE) distclean
+	rm -rf $(CONFIG_GENERATED)
+
+install :
+	cd src; $(MAKE) install
+	cd lib; $(MAKE) install
+	$(INSTALL) -m 444 -T $(GAUCHE_PKGLIBDIR)/.packages $(PACKAGE).gpd
+
+uninstall :
+	cd src; $(MAKE) uninstall
+	cd lib; $(MAKE) uninstall
+	$(INSTALL) -U $(GAUCHE_PKGLIBDIR)/.packages $(PACKAGE).gpd
+
+realclean : clean
+	cd src; $(MAKE) realclean
+	cd lib; $(MAKE) realclean
+	rm -rf configure $(CONFIG_GENERATED)
+

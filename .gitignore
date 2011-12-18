@@ -1,0 +1,15 @@
+
+/autom4te.cache
+*.log
+*.status
+*.o
+*.so
+*.dll
+*.gen.*
+Makefile
+
+/src/sdl-lib.c
+/src/image/sdl-imagelib.c
+
+/VERSION
+/gauche-sdl.gpd

@@ -1,0 +1,103 @@
+# General info
+SHELL       = @SHELL@
+prefix      = @prefix@
+exec_prefix = @exec_prefix@
+bindir      = @bindir@
+libdir      = @libdir@
+datadir     = @datadir@
+datarootdir = @datarootdir@
+srcdir      = @srcdir@
+VPATH       = $(srcdir)
+
+# These may be overridden by make invocators
+DESTDIR        =
+GOSH           = "@GOSH@"
+GAUCHE_CONFIG  = "@GAUCHE_CONFIG@"
+GAUCHE_PACKAGE = "@GAUCHE_PACKAGE@"
+INSTALL        = "@GAUCHE_INSTALL@" -C
+
+HAVE_SDL_GFX = @HAVE_SDL_GFX@
+HAVE_SDL_IMAGE = @HAVE_SDL_IMAGE@
+HAVE_SDL_MIXER = @HAVE_SDL_MIXER@
+HAVE_SDL_TTF = @HAVE_SDL_TTF@
+
+
+SCRIPTDIR = "@SCRIPTDIR@"
+GENSTUB = "@GENSTUB@"
+
+# Other parameters
+SOEXT  = @SOEXT@
+OBJEXT = @OBJEXT@
+EXEEXT = @EXEEXT@
+LOCAL_PATHS = "@LOCAL_PATHS@"
+
+SDL_LIBS = -lSDL
+
+# Module-specific stuff
+PACKAGE = @PACKAGE@
+
+ARCHFILES = gauche-sdl.$(SOEXT)
+HEADERS   = 
+
+TARGET    = $(ARCHFILES)
+GENERATED = *.gen.* *lib.c gauche-sdl.$(SOEXT)
+CONFIG_GENERATED = Makefile config.cache config.log config.status \
+		   configure.lineno autom4te*.cache $(PACKAGE).gpd
+
+GAUCHE_PKGINCDIR  = "$(DESTDIR)@GAUCHE_PKGINCDIR@"
+GAUCHE_PKGLIBDIR  = "$(DESTDIR)@GAUCHE_PKGLIBDIR@"
+GAUCHE_PKGARCHDIR = "$(DESTDIR)@GAUCHE_PKGARCHDIR@"
+
+gauche_sdl_SRCS = gauche-sdl.c \
+									sdl-lib.c \
+									sdl_type.gen.c
+
+sdl_STUB_TYPE_HDRS = sdl_type.gen.stub.header
+
+all : $(TARGET)
+	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) all); fi
+
+#generate stub -> c file
+.SUFFIXES:.stub .c
+
+.stub.c:
+	$(GOSH) -I$(SCRIPTDIR) $(GENSTUB) $<
+
+sdl-lib.c: $(sdl_STUB_TYPE_HDRS)
+
+#generate type file
+sdl_type.gen.c sdl_type.gen.h sdl_type.gen.stub.header: sdl_type.scm
+	$(GOSH) -I$(SCRIPTDIR) sdl_type.scm
+
+#compile sdl
+gauche-sdl.$(SOEXT): $(gauche_sdl_SRCS)
+	$(GAUCHE_PACKAGE) compile --local=$(LOCAL_PATHS) --verbose --libs="$(SDL_LIBS)" gauche-sdl $(gauche_sdl_SRCS)
+
+check : all
+	@rm -f test.log
+	$(GOSH) -I. -I$(srcdir) $(srcdir)/test.scm > test.log
+	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) check); fi
+
+install : all
+	$(INSTALL) -m 444 -T $(GAUCHE_PKGINCDIR) $(HEADERS)
+	$(INSTALL) -m 555 -T $(GAUCHE_PKGARCHDIR) $(ARCHFILES)
+	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) install); fi
+
+uninstall :
+	$(INSTALL) -U $(GAUCHE_PKGINCDIR) $(HEADERS)
+	$(INSTALL) -U $(GAUCHE_PKGARCHDIR) $(ARCHFILES)
+	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) uninstall); fi
+
+clean :
+	$(GAUCHE_PACKAGE) compile --clean gauche_sdl $(gauche_sdl_SRCS)
+	rm -rf core $(TARGET) $(GENERATED) *~ test.log so_locations
+	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) clean); fi
+
+distclean : clean
+	rm -rf $(CONFIG_GENERATED)
+	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) distclean); fi
+
+maintainer-clean : clean
+	rm -rf $(CONFIG_GENERATED) configure VERSION
+	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) maintainer-clean); fi
+

@@ -1,0 +1,290 @@
+
+"
+#include \"gauche-sdl-image.h\"
+#include \"../sdl_type.gen.h\"
+"
+
+(include "../sdl_type.gen.stub.header")
+(include "../macro.stub.header")
+
+(define-cise-stmt (set-ctx-data var obj)
+  `(cond
+     [(is-type? ,obj <sdl-rw-ops>)
+      (set! ,var (unboxing ,obj <sdl-rw-ops>))]
+     [(is-type? ,obj <sdl-rw-ops-user>)
+      (set! ,var (cast SDL_RWops* (unboxing ,obj <sdl-rw-ops-user>)))]
+     [else (Scm_Error "<sdl-rw-ops> required, but got %S." ,obj)]))
+
+(define-cfn scm-finalize-sdl-surface (obj::ScmObj data::void*) :: void
+  (let* ([o :: ScmSDL_Surface* (SCM_SDL_SURFACE obj)])
+    (when (@ o->data)
+      (SDL_FreeSurface (@ o->data))
+      (set! (@ o->data) 0))))
+
+(define-cise-stmt (set-ctx-data var obj)
+  `(cond
+     [(is-type? ,obj <sdl-rw-ops>)
+      (set! ,var (unboxing ,obj <sdl-rw-ops>))]
+     [(is-type? ,obj <sdl-rw-ops-user>)
+      (set! ,var (cast SDL_RWops* (unboxing ,obj <sdl-rw-ops-user>)))]
+     [else (Scm_Error "<sdl-rw-ops> required, but got %S." ,obj)]))
+
+
+;;;;;
+;; Load an image from an SDL data source.
+;;
+;; If the image format supports a transparent pixel, SDL will set the
+;; colorkey for the surface.  You can enable RLE acceleration on the
+;; surface afterwards by calling:
+;;	(sdl-set-color-key image SDL_RLEACCEL (ref (ref image 'format) colorkey))
+;; @param type The 'type' may be one of: "BMP", "GIF", "PNG", etc.
+(define-cproc img-load-typed-rw (src::<top> type::<const-cstring>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadTyped_RW src-data 0 (cast char* type))])
+      (if (not obj)
+        (Scm_Error "IMG_LoadTyped_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+;;;;;
+;; Convenience functions
+(define-cproc img-load (file::<const-cstring>) :: <top>
+  (let* ([obj :: SDL_Surface* (IMG_Load file)])
+    (if (not obj)
+      (Scm_Error "IMG_Load failure."))
+    (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+      (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+      (result ret))))
+
+(define-cproc img-load-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_Load_RW src-data 0)])
+      (if (not obj)
+        (Scm_Error "IMG_Load_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-ico? (src::<top>) :: <boolean>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (result (IMG_isICO src-data))))
+
+(define-cproc img-cur? (src::<top>) :: <boolean>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (result (IMG_isCUR src-data))))
+
+(define-cproc img-bmp? (src::<top>) :: <boolean>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (result (IMG_isBMP src-data))))
+
+(define-cproc img-gif? (src::<top>) :: <boolean>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (result (IMG_isGIF src-data))))
+
+(define-cproc img-jpg? (src::<top>) :: <boolean>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (result (IMG_isJPG src-data))))
+
+(define-cproc img-lbm? (src::<top>) :: <boolean>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (result (IMG_isLBM src-data))))
+
+(define-cproc img-pcx? (src::<top>) :: <boolean>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (result (IMG_isPCX src-data))))
+
+(define-cproc img-png? (src::<top>) :: <boolean>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (result (IMG_isPNG src-data))))
+
+(define-cproc img-tif? (src::<top>) :: <boolean>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (result (IMG_isTIF src-data))))
+
+(define-cproc img-xpm? (src::<top>) :: <boolean>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (result (IMG_isXPM src-data))))
+
+(define-cproc img-xv? (src::<top>) :: <boolean>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (result (IMG_isXV src-data))))
+
+(define-cproc img-load-ico-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadICO_RW src-data)])
+      (if (not obj)
+        (Scm_Error "IMG_LoadICO_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-load-cur-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadCUR_RW src-data)])
+      (if (not obj)
+        (Scm_Error "IMG_LoadCUR_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-load-bmp-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadBMP_RW src-data)])
+      (if (not obj)
+        (Scm_Error "IMG_LoadBMP_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-load-gif-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadGIF_RW src-data)])
+      (if (not obj)
+        (Scm_Error "IMG_LoadGIF_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-load-jpg-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadJPG_RW src-data)])
+      (if (not obj)
+        (Scm_Error "IMG_LoadJPG_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-load-lbm-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadLBM_RW src-data)])
+      (if (not obj)
+        (Scm_Error "IMG_LoadLBM_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-load-pcx-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadPCX_RW src-data)])
+      (if (not obj)
+        (Scm_Error "IMG_LoadPCX_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-load-png-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadPNG_RW src-data)])
+      (if (not obj)
+        (Scm_Error "IMG_LoadPNG_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-load-tga-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadTGA_RW src-data)])
+      (if (not obj)
+        (Scm_Error "IMG_LoadTGA_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-load-tif-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadTIF_RW src-data)])
+      (if (not obj)
+        (Scm_Error "IMG_LoadTIF_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-load-xcf-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadXCF_RW src-data)])
+      (if (not obj)
+        (Scm_Error "IMG_LoadXCF_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-load-xpm-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadXPM_RW src-data)])
+      (if (not obj)
+        (Scm_Error "IMG_LoadXPM_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-load-xv-rw (src::<top>) :: <top>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([obj :: SDL_Surface* (IMG_LoadXV_RW src-data)])
+      (if (not obj)
+        (Scm_Error "IMG_LoadXV_RW failure."))
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc img-read-xpm-from-array (xpm::<u8vector>) :: <top>
+  (let* ([obj :: SDL_Surface* (IMG_ReadXPMFromArray 
+                                (cast char** (& (@ xpm->elements))))])
+    (if (not obj)
+      (Scm_Error "IMG_ReadXPMFromArray failure."))
+    (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+      (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+      (result ret))))
+

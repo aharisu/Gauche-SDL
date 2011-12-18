@@ -1,0 +1,16 @@
+;;;
+;;; gauche_sdl
+;;;
+
+;;;;;
+;;@type cmd
+;;@@parse-relative #f
+
+(define-module sdl
+  (export-all)
+  )
+(select-module sdl)
+
+;; Loads extension
+(dynamic-load "gauche-sdl")
+

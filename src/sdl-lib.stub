@@ -1,0 +1,3198 @@
+;;;
+;;; gauche_sdllib.stub
+;;;
+
+"
+#include \"gauche-sdl.h\"
+#include \"sdl_type.gen.h\"
+"
+
+(include "sdl_type.gen.stub.header")
+(include "macro.stub.header")
+
+;;--------------
+;; <unvector>
+;;--------------
+
+"
+#define TYPE_U8 1
+#define TYPE_U16 2
+#define TYPE_U32 4
+"
+(define-constant u8 1)
+(define-constant u16 2)
+(define-constant u32 4)
+
+"
+#define UNVECTOR_LENGTH2SIZE(type, len) ((type) * (len))
+#define UNVECTOR_SIZE2LENGTH(type, size) ((size) / (type))
+"
+
+(define-cise-stmt (un-case type u8-stmt u16-stmt u32-stmt)
+  `(case ,type
+     [(1) ,u8-stmt]
+     [(2) ,u16-stmt]
+     [(4) ,u32-stmt]
+     [else (Scm_Error "type mismatch")]))
+
+(define-cclass <unvector>
+  :built-in :struct
+  "Scm_unvector*" "Scm_unvectorClass"
+  ()
+  (
+   (type :type <fixnum>)
+   (length :type <int>
+           :setter #f
+           :getter "return SCM_MAKE_INT(UNVECTOR_SIZE2LENGTH(
+            SCM_UNVECTOR_DATA(OBJARG).type, SCM_UNVECTOR_DATA(OBJARG).size));
+   ")
+   (size :type <int>
+         :setter #f
+         :getter "return SCM_MAKE_INT(SCM_UNVECTOR_DATA(OBJARG).size);")
+   )
+  (printer "
+           int i;
+           unvector* vec = &(SCM_UNVECTOR_DATA(obj));
+           int len = UNVECTOR_SIZE2LENGTH(vec->type, vec->size);
+
+           Scm_Printf(port, \"#un%d(\", vec->type * 8);
+           switch(vec->type) {
+           case 1:
+             for(i = 0;i < len - 1;++i) {
+                   Scm_Printf(port, \"%u \", vec->buf[i]);
+             }
+             Scm_Printf(port, \"%u)\", vec->buf[i]);
+             break;
+           case 2:
+             for(i = 0;i < len - 1;++i) {
+                   Scm_Printf(port, \"%u \", ((unsigned short*)vec->buf)[i]);
+             }
+             Scm_Printf(port, \"%u)\", ((unsigned short*)vec->buf)[i]);
+            break;
+           case 4:
+             for(i = 0;i < len - 1;++i) {
+                   Scm_Printf(port, \"%u \", ((unsigned long*)vec->buf)[i]);
+             }
+             Scm_Printf(port, \"%u)\", ((unsigned long*)vec->buf)[i]);
+            break;
+           }
+
+           ")
+  )
+
+
+(define-cproc make-unvector (type::<fixnum> len::<int>) ::<unvector>
+  (let* ([size::int (UNVECTOR_LENGTH2SIZE type len)]
+         [vec::unvector])
+    (set! (@ vec.buf) (SCM_NEW_ARRAY Uint8 size))
+    (set! (@ vec.size) size)
+    (set! (@ vec.type) type)
+    (result vec)))
+
+(define-cproc unvector-set! (vec::<unvector> index::<int> num::<uint32>) ::<void>
+  (un-case (ref vec type)
+           (set! (aref (cast Uint8* (@ vec.buf)) index) num)
+           (set! (aref (cast Uint16* (@ vec.buf)) index) num)
+           (set! (aref (cast Uint32* (@ vec.buf)) index) num)))
+
+(define-cproc un8vector-set! (vec::<unvector> index::<int> num::<uint8>) ::<void>
+  (set! (aref (cast Uint8* (@ vec.buf)) index) num))
+
+(define-cproc un16vector-set! (vec::<unvector> index::<int> num::<uint16>) ::<void>
+  (set! (aref (cast Uint16* (@ vec.buf)) index) num))
+
+(define-cproc un32vector-set! (vec::<unvector> index::<int> num::<uint32>) ::<void>
+  (set! (aref (cast Uint32* (@ vec.buf)) index) num))
+
+(define-cproc unvector-ref (vec::<unvector> index::<int>) :: <top>
+  (un-case (ref vec type)
+           (result (boxing (aref (cast Uint8* (@ vec.buf)) index) <uint8>))
+           (result (boxing (aref (cast Uint16* (@ vec.buf)) index) <uint16>))
+           (result (boxing (aref (cast Uint32* (@ vec.buf)) index) <uint32>))))
+
+(define-cproc un8vector-ref (vec::<unvector> index::<int>) ::<uint8>
+  (result (aref (cast Uint8* (@ vec.buf)) index)))
+
+(define-cproc un16vector-ref (vec::<unvector> index::<int>) ::<uint16>
+  (result (aref (cast Uint16* (@ vec.buf)) index)))
+
+(define-cproc un32vector-ref (vec::<unvector> index::<int>) ::<uint32>
+  (result (aref (cast Uint32* (@ vec.buf)) index)))
+
+
+"
+#define SET_UNVECTOR_DATA(obj, v_buf, v_type, v_size) \
+do {\
+  SCM_UNVECTOR_DATA(obj).buf = (v_buf); \
+  SCM_UNVECTOR_DATA(obj).size = (v_size);  \
+  SCM_UNVECTOR_DATA(obj).type  = (v_type);  \
+}while(0)
+
+"
+
+(define-cise-stmt raise-sdl-error 
+  [(_ func-name)
+    `(Scm_RaiseCondition
+      (SCM_OBJ SCM_CLASS_SDL_ERROR)
+       SCM_RAISE_CONDITION_MESSAGE
+        "%s: %s"
+         ,(symbol->string func-name) (SDL_GetError))]
+  )
+
+;;---------------
+;; SDL.h
+;;---------------
+
+(define-enum SDL_INIT_TIMER)
+(define-enum SDL_INIT_AUDIO)
+(define-enum SDL_INIT_VIDEO)
+(define-enum SDL_INIT_CDROM)
+(define-enum SDL_INIT_JOYSTICK)
+(define-enum SDL_INIT_NOPARACHUTE)
+(define-enum SDL_INIT_EVENTTHREAD)
+(define-enum SDL_INIT_EVERYTHING)
+
+
+;;;;;
+;; This function loads the SDL dynamically linked library and initializes 
+;; the subsystems specified by 'flags' (and those satisfying dependencies)
+;; Unless the SDL_INIT_NOPARACHUTE flag is set, it will install cleanup
+;; signal handlers for some commonly ignored fatal signals (like SIGSEGV)
+(define-cproc sdl-init (flags::<uint>) ::<int>
+  (result (SDL_Init flags)))
+
+;;;;;
+;; This function initializes specific SDL subsystems
+(define-cproc sdl-init-subsystem (flags::<uint>) ::<int>
+  (result (SDL_Init flags)))
+
+;;;;;
+;; This function cleans up specific SDL subsystems
+(define-cproc sdl-quit-subsystem (flags::<uint>) ::<void>
+  (SDL_QuitSubSystem flags))
+
+;;;;;
+;; This function returns mask of the specified subsystems which have
+;; been initialized.
+;; If 'flags' is 0, it returns a mask of all initialized subsystems.
+(define-cproc sdl-was-init(flags::<uint>) ::<int>
+  (result (SDL_WasInit flags)))
+
+;;;;;
+;; This function cleans up all initialized subsystems and unloads the
+;; dynamically linked library.  You should call it upon all exit conditions.
+(define-cproc sdl-quit () ::<void>
+  (SDL_Quit))
+
+
+;;---------------
+;; SDL_Audio.h
+;;---------------
+(define-enum AUDIO_U8)
+(define-enum AUDIO_S8)
+(define-enum AUDIO_U16LSB)
+(define-enum AUDIO_S16LSB)
+(define-enum AUDIO_U16MSB)
+(define-enum AUDIO_S16MSB)
+(define-enum AUDIO_U16)
+(define-enum AUDIO_S16)
+(define-enum AUDIO_U16SYS)
+(define-enum AUDIO_S16SYS)
+
+;;;;;
+;; When filling in the desired audio spec structure,
+;; @slot freq should be the desired audio frequency in samples-per-second.
+;;
+;; @slot format should be the desired audio format.
+;;
+;; @slot samples samples is the desired size of the audio buffer, in samples.
+;;     This number should be a power of two, and may be adjusted by the audio
+;;     driver to a value more suitable for the hardware.  Good values seem to
+;;     range between 512 and 8096 inclusive, depending on the application and
+;;     CPU speed.  Smaller values yield faster response time, but can lead
+;;     to underflow if the application is doing heavy processing and cannot
+;;     fill the audio buffer in time.  A stereo sample consists of both right
+;;     and left channels in LR ordering.
+;;     Note that the number of samples is directly related to time by the
+;;     following formula:  ms = (samples*1000)/freq
+;;
+;; @slot size size is the size in bytes of the audio buffer, and is
+;;     calculated by SDL_OpenAudio().
+;;
+;; @slot silence silence is the value used to set the buffer to silence,
+;;     and is calculated by SDL_OpenAudio().
+;;
+;; @slot callback should be set to a function that will be called
+;;     when the audio device is ready for more data.  It is passed a pointer
+;;     to the audio buffer, and the length in bytes of the audio buffer.
+;;     This function usually runs in a separate thread, and so you should
+;;     protect data structures that it accesses by calling SDL_LockAudio()
+;;     and SDL_UnlockAudio() in your code.
+;;
+;; @slot userdata userdata is passed as the first parameter to your callback
+;;     function.
+(define-cclass <sdl-audio-spec>
+  :built-in
+  "ScmSDL_AudioSpecWrapper*" "Scm_SDL_AudioSpecWrapperClass"
+  ()
+  (;;slot
+   (freq :type <int>
+         :c-name "audio.freq")
+   (format :type <uint16>
+           :c-name "audio.format")
+   (channels :type <uint8>
+             :c-name "audio.channels")
+   (silence :type <uint8>
+            :c-name "audio.silence")
+   (samples :type <uint16>
+            :c-name "audio.samples")
+   (size :type <uint32>
+         :setter #f
+         :c-name "audio.size")
+   (callback :type <closure>)
+   (userdata :type <top>)
+   ))
+
+(define-cproc make-sdl-audio-spec (freq::<int> format::<uint16> channels::<uint8>
+                                                samples::<uint16> callback::<closure> 
+                                                :optional userdata::<top>)  ::<sdl-audio-spec>
+  (let* ([wrapper::SDL_AudioSpecWrapper* (SCM_NEW SDL_AudioSpecWrapper)])
+    (set! (@ wrapper->audio.freq) freq)
+    (set! (@ wrapper->audio.format) format)
+    (set! (@ wrapper->audio.channels) channels)
+    (set! (@ wrapper->audio.samples) samples)
+    (set! (@ wrapper->callback) callback)
+    (set! (@ wrapper->userdata) userdata)
+    (result wrapper)))
+
+;;;;;
+;; A structure to hold a set of audio conversion filters and buffers
+(define-cclass <sdl-audio-cvt>
+  :built-in
+  "ScmSDL_AudioCVT*" "Scm_SDL_AudioCVTClass"
+  ()
+  (;;slot
+   (needed :type <boolean>)
+   (src-format :type <uint16>
+               :c-name "src_format")
+   (dst-format :type <uint16>
+               :c-name "dst_format")
+   (rate-incr :type <real>
+              :c-name "rate_incr")
+   (buf :type <unvector>
+        :getter "
+        unvector vec;
+        vec.buf = obj->buf;
+        vec.size = obj->len;
+        return SCM_MAKE_UNVECTOR(vec);
+        "
+        :setter #f)
+   (len :type <int>
+        :setter #f)
+   (len-cvt :type <int>
+            :c-name "len_cvt"
+            :setter #f)
+   (len-mult :type <int>
+             :c-name "len_mult"
+             :setter #f)
+   (len-ratio :type <real>
+              :c-name "len_ratio")
+   ))
+
+(define-cproc make-sdl-audio-cvt (src-format::<uint16> src-channels::<uint8> src-rate::<int>
+                                                        dst-format::<uint16> dst-channels::<uint8> dst-rate::<int>) ::<sdl-audio-cvt>
+  (let* ([cvt::SDL_AudioCVT* (SCM_NEW SDL_AudioCVT)])
+    (if (!= 1 (SDL_BuildAudioCVT cvt src-format src-channels src-rate 
+                                   dst-format dst-channels dst-rate))
+      (raise-sdl-error make-sdl-audio-cvt))
+    (result cvt)))
+
+;;;;;
+;; util function
+;; Allocates a new buffer and copy
+(define-cproc sdl-copy-audio-cvt-buf (cvt::<sdl-audio-cvt> vec::<unvector>) :: <void>
+  (set! (@ cvt->buf) (SCM_NEW_ARRAY Uint8 (* (@ cvt->len-mult) (@ vec.size))))
+  (set! (@ cvt->len) (@ vec.size))
+  (memcpy (@ cvt->buf) (@ vec.buf) (@ vec.size)))
+
+
+"
+typedef struct{
+ScmObj vector;
+ScmClosure* callback;
+ScmObj userdata;
+int first_callP;
+}OpenAudioData;
+
+static ScmVM* Scm_AudioVM;
+"
+
+;; is mean the len?
+(define-cfn sdl_audio_spec_callback (userdata::void* stream::Uint8* len::int) ::void
+  (let* ([data::OpenAudioData* (cast OpenAudioData* userdata)])
+    (when (@ data->first-call?)
+      (Scm_AttachVM Scm_AudioVM)
+      (set! (@ data->first-call?) 0))
+    (SET_UNVECTOR_DATA (@ data->vector) stream TYPE_U8 len)
+    (Scm_ApplyRec2 (SCM_OBJ (@ data->callback)) 
+                   (@ data->userdata)
+                   (SCM_OBJ (@ data->vector)))))
+
+;;;;;;
+;; This function opens the audio device with the desired parameters, and
+;; returns 0 if successful, placing the actual hardware parameters in the
+;; structure pointed to by 'obtained'.  If 'obtained' is NULL, the audio
+;; data passed to the callback function will be guaranteed to be in the
+;; requested format, and will be automatically converted to the hardware
+;; audio format if necessary.  This function returns -1 if it failed 
+;; to open the audio device, or couldn't set up the audio thread.
+;;
+;; The audio device starts out playing silence when it's opened, and should
+;; be enabled for playing by calling SDL_PauseAudio(0) when you are ready
+;; for your audio callback function to be called.  Since the audio driver
+;; may modify the requested size of the audio buffer, you should allocate
+;; any local mixing buffers after you open the audio device.
+(define-cproc sdl-open-audio (desired::<sdl-audio-spec>
+                               :optional (obtained-null?::<boolean> #f)) :: <top>
+  ;;initialize audio callback vm
+  (when (zero? Scm_AudioVM)
+    (set! Scm_AudioVM (Scm_NewVM (Scm_VM) (boxing "audio" <const-cstring>))))
+  ;;setting callback data
+  (let* ([data :: OpenAudioData* (SCM_NEW OpenAudioData)]
+         [vec :: unvector])
+    (set! (@ data->vector) (boxing vec <unvector>))
+    (set! (@ data->callback) (@ desired->callback))
+    (set! (@ data->userdata) (@ desired->userdata))
+    (set! (@ data->first-call?) 1)
+    ;;set to desired
+    (set! (@ desired->audio.callback) sdl_audio_spec_callback)
+    (set! (@ desired->audio.userdata) data))
+  ;;
+  (if obtained-null?
+    (begin
+      (if (< (SDL_OpenAudio (& (@ desired->audio)) 0) 0)
+        (raise-sdl-error sdl-open-audio))
+      (result (boxing 1 <boolean>)))
+    (let* ([obtained::SDL_AudioSpecWrapper* (SCM_NEW SDL_AudioSpecWrapper)])
+      (if (< (SDL_OpenAudio (& (@ desired->audio)) (& (@ obtained->audio))) 0)
+        (raise-sdl-error sdl-open-audio))
+      (set! (@ obtained->callback) (@ desired->callback))
+      (set! (@ obtained->userdata) (@ desired->userdata))
+      (result (boxing obtained <sdl-audio-spec>)))))
+
+(define-enum SDL_AUDIO_STOPPED)
+(define-enum SDL_AUDIO_PLAYING)
+(define-enum SDL_AUDIO_PAUSED)
+
+
+;;;;;
+;; Get the current audio state
+(define-cproc sdl-get-audio-status () ::<fixnum>
+  (result (SDL_GetAudioStatus)))
+
+;;;;;
+;; This function pauses and unpauses the audio callback processing.
+;; It should be called with a parameter of 0 after opening the audio
+;; device to start playing sound.  This is so you can safely initialize
+;; data for your callback function after opening the audio device.
+;; Silence will be written to the audio device during the pause.
+(define-cproc sdl-pause-audio (pause-on::<boolean>) ::<void>
+  (SDL_PauseAudio pause-on))
+
+(define-cfn scm-finalize-wav-buffer (obj::ScmObj data::void*) :: void
+  (let* ([o :: Scmunvector* (SCM_UNVECTOR obj)])
+    (SDL_FreeWAV (@ o->data.buf))))
+
+;;;;;
+;; loads a WAV from a file
+(define-cproc sdl-load-wav (file::<const-cstring>) ::(<sdl-audio-spec> <top>)
+  (let* ([wrapper::SDL_AudioSpecWrapper* (SCM_NEW SDL_AudioSpecWrapper)]
+         [buffer::Uint8*]
+         [len::Uint32]
+         [vec::unvector]
+         [scm-vec::ScmObj])
+    (if (zero? (SDL_LoadWAV file (& (@ wrapper->audio)) (& buffer) (& len)))
+      (raise-sdl-error sdl-load-wav))
+    (set! (@ vec.buf) buffer)
+    (set! (@ vec.size) len)
+    (set! (@ vec.type) TYPE_U8)
+    (set! scm-vec (boxing vec <unvector>))
+    (Scm_RegisterFinalizer scm-vec scm-finalize-wav-buffer 0)
+    (result wrapper scm-vec)))
+
+;;;;;
+;; This function takes a source format and rate and a destination format
+;; and rate, and initializes the 'cvt' structure with information needed
+;; by sdl-convert-audio to convert a buffer of audio data from one format
+;; to the other.
+(define-cproc sdl-build-audio-cvt (src-format::<uint16> src-channels::<uint8> src-rate::<int>
+                                   dst-format::<uint16> dst-channels::<uint8> dst-rate::<int>) :: <sdl-audio-cvt>
+  (let* ([cvt :: SDL_AudioCVT* (SCM_NEW SDL_AudioCVT)])
+    (if (== 1 (SDL_BuildAudioCVT cvt src-format src-channels src-rate 
+                                dst-format dst-channels dst-rate))
+      (result cvt)
+      (raise-sdl-error sdl-build-audio-cvt))))
+
+
+;;;;;
+;; Once you have initialized the 'cvt' structure using SDL_BuildAudioCVT(),
+;; created an audio buffer cvt->buf, and filled it with cvt->len bytes of
+;; audio data in the source format, this function will convert it in-place
+;; to the desired format.
+;; The data conversion may expand the size of the audio data, so the buffer
+;; cvt->buf should be allocated after the cvt structure is initialized by
+;; sdl-build-audio-cvt, and should be cvt->len*cvt->len_mult bytes long.
+;;
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-convert-audio (cvt::<sdl-audio-cvt>) ::<void>
+  (unless (zero? (SDL_ConvertAudio cvt))
+    (raise-sdl-error sdl-convert-audio)))
+
+
+(define-enum SDL_MIX_MAXVOLUME)
+;;;;;
+;; This takes two audio buffers of the playing audio format and mixes
+;; them, performing addition, volume adjustment, and overflow clipping.
+;; The volume ranges from 0 - 128, and should be set to SDL_MIX_MAXVOLUME
+;; for full audio volume.  Note this does not change hardware volume.
+;; This is provided for convenience -- you can mix your own audio data.
+(define-cproc sdl-mix-audio (dst::<unvector> src::<unvector> len::<uint32> volume::<int>
+                             :optional (src-offset::<int> 0))::<void>
+  (SDL_MixAudio (@ dst.buf) (+ (@ src.buf) src-offset) len volume))
+
+;;;;;
+;; The lock manipulated by these functions protects the callback function.
+;; During a LockAudio/UnlockAudio pair, you can be guaranteed that the
+;; callback function is not running.  Do not call these from the callback
+;; function or you will cause deadlock.
+(define-cproc sdl-lock-audio () ::<void>
+  (SDL_LockAudio))
+
+;;;;;
+;; The lock manipulated by these functions protects the callback function.
+;; During a LockAudio/UnlockAudio pair, you can be guaranteed that the
+;; callback function is not running.  Do not call these from the callback
+;; function or you will cause deadlock.
+(define-cproc sdl-unlock-audio () ::<void>
+  (SDL_UnlockAudio))
+
+;;;;;
+;; This function shuts down audio processing and closes the audio device.
+(define-cproc sdl-close-audio () ::<void>
+  (SDL_CloseAudio))
+
+
+;;------------------
+;; SDL_cdrom.h
+;;------------------
+
+(define-enum SDL_AUDIO_TRACK)
+(define-enum SDL_DATA_TRACK)
+
+
+(define-enum CD_TRAYEMPTY)
+(define-enum CD_STOPPED)
+(define-enum CD_PLAYING)
+(define-enum CD_PAUSED)
+(define-enum CD_ERROR)
+
+(define-cproc sdl-cd-indrive (status::<fixnum>) ::<boolean>
+  (result (CD_INDRIVE status)))
+
+(define-cclass <sdl-cd-track>
+  :built-in :struct
+  "ScmSDL_CDtrack*" "Scm_SDL_CDtrackClass"
+  ()
+  (;slot
+   (id :type <uint8>)
+   (type :type <uint8>)
+   (length :type <uint32>)
+   (offset :type <uint32>))
+  (printer #t)
+  )
+
+(define-cclass <sdl-cd>
+  :built-in
+  "ScmSDL_CD*" "Scm_SDL_CDClass"
+  ()
+  (
+   (id :type <int>)
+   (status :type <fixnum>)
+   (numtracks :type <int>)
+   (cur-track :type <int>)
+   (cur-frame :type <int>)
+   ))
+
+(define-cproc sdl-get-cd-track (cd::<sdl-cd> index::<int>) ::<sdl-cd-track>
+  (result (aref (@ cd->track) index)))
+
+;(define-enum CD_FPS)
+(define-cproc sdl-frames-to-msf (frame::<int>) ::(<int> <int> <int>)
+  (let* ([m::int]
+         [s::int]
+         [f::int])
+    (FRAMES_TO_MSF frame (& m) (& s) (& f))
+    (result m s f)))
+
+(define-cproc sdl-msf-to-frames (m::<int> s::<int> f::<int>) ::<int>
+  (result (MSF_TO_FRAMES m s f)))
+
+
+;;;;;
+;;  Returns the number of CD-ROM drives on the system, or -1 if
+;;  sdl-init has not been called with the SDL_INIT_CDROM flag.
+(define-cproc sdl-cd-num-drives () ::<int>
+  (result (SDL_CDNumDrives)))
+
+;;;;;
+;;  Returns a human-readable, system-dependent identifier for the CD-ROM.
+;;  Example:
+;;   - "/dev/cdrom"
+;;   - "E:"
+;;   - "/dev/disk/ide/1/master"
+;; @param drive 0 base index
+(define-cproc sdl-cd-name (drive::<int>) ::<const-cstring>
+  (result (SDL_CDName drive)))
+
+;;;;;
+;;  Opens a CD-ROM drive for access.  It returns a drive handle on success,
+;;  or raise <sdl-error> if the drive was invalid or busy.  
+;;  Drives are numbered starting with 0.  Drive 0 is the system default CD-ROM.
+(define-cproc sdl-cd-open (drive::<int>) :: <sdl-cd>
+  (let* ([cdrom::SDL_CD*])
+    (set! cdrom (SDL_CDOpen drive))
+    (if (zero? cdrom)
+      (result cdrom)
+      (raise-sdl-error sdl-cd-open))))
+
+;;;;;
+;;  This function returns the current status of the given drive.
+;;  If the drive has a CD in it, the table of contents of the CD and current
+;;  play position of the CD will be stored in the SDL_CD structure.
+(define-cproc sdl-cd-status (cdrom::<sdl-cd>) ::<fixnum>
+  (result (SDL_CDStatus cdrom)))
+
+;;;;;
+;;  Play the given CD starting at 'start-track' and 'start-frame' for 'ntracks'
+;;  tracks and 'nframes' frames.  If both 'ntrack' and 'nframe' are 0, play 
+;;  until the end of the CD.  This function will skip data tracks.
+;;  This function should only be called after calling sdl-cd-status to 
+;;  get track information about the CD.
+(define-cproc sdl-cd-play-tracks (cdrom::<sdl-cd> 
+                                   start-track::<fixnum> start-frame::<fixnum>
+                                   ntracks::<fixnum> nframes::<fixnum>) ::<void>
+  (unless (zero? (SDL_CDPlayTracks cdrom start-track start-frame ntracks nframes))
+    (raise-sdl-error sdl-cd-play-tracks)))
+
+;;;;;
+;; Play the given CD starting at 'start' frame for 'length' frames.
+(define-cproc sdl-cd-play (cdrom::<sdl-cd> start::<fixnum> length::<fixnum>) ::<void>
+  (unless (zero? (SDL_CDPlay cdrom start length))
+    (raise-sdl-error sdl-cd-play)))
+
+;;;;;
+;; Pause play
+(define-cproc sdl-cd-pause (cdrom::<sdl-cd>)::<void>
+  (unless (zero? (SDL_CDPause cdrom))
+    (raise-sdl-error sdl-cd-pause)))
+
+;;;;;
+;; Resume play
+(define-cproc sdl-cd-resume (cdrom::<sdl-cd>)::<void>
+  (unless (zero? (SDL_CDResume cdrom))
+    (raise-sdl-error sdl-cd-resume)))
+
+;;;;;
+;; Stop play
+(define-cproc sdl-cd-stop (cdrom::<sdl-cd>)::<void>
+  (unless (zero? (SDL_CDStop cdrom))
+    (raise-sdl-error sdl-cd-stop)))
+
+;;;;;
+;; Eject CD-ROM
+(define-cproc sdl-cd-eject (cdrom::<sdl-cd>)::<void>
+  (unless (zero? (SDL_CDEject cdrom))
+    (raise-sdl-error sdl-cd-eject)))
+
+;;;;;
+;; Closes the handle for the CD-ROM drive
+(define-cproc sdl-cd-close (cdrom::<sdl-cd>)::<void>
+  (SDL_CDClose cdrom))
+
+
+;;------------------
+;; SDL_error.h
+;;------------------
+
+(define-cproc sdl-get-error () :: <const-cstring>
+  (result (SDL_GetError)))
+
+(define-cproc sdl-clear-error () :: <void>
+  (SDL_ClearError))
+
+;;------------------
+;; SDL_active.h
+;;------------------
+
+(define-enum SDL_APPMOUSEFOCUS)
+(define-enum SDL_APPINPUTFOCUS)
+(define-enum SDL_APPACTIVE)
+
+;;;;;
+;; This function returns the current state of the application, which is a
+;; bitwise combination of SDL_APPMOUSEFOCUS, SDL_APPINPUTFOCUS, and
+;; SDL_APPACTIVE.  If SDL_APPACTIVE is set, then the user is able to
+;; see your application, otherwise it has been iconified or disabled.
+(define-cproc sdl-get-app-state () ::<fixnum>
+  (result (SDL_GetAppState)))
+
+
+;;------------------
+;; SDL_keysym.h
+;;------------------
+
+;; The keyboard syms have been cleverly chosen to map to ASCII
+(define-enum SDLK_UNKNOWN)
+(define-enum SDLK_FIRST)
+(define-enum SDLK_BACKSPACE)
+(define-enum SDLK_TAB)
+(define-enum SDLK_CLEAR)
+(define-enum SDLK_RETURN)
+(define-enum SDLK_PAUSE)
+(define-enum SDLK_ESCAPE)
+(define-enum SDLK_SPACE)
+(define-enum SDLK_EXCLAIM)
+(define-enum SDLK_QUOTEDBL)
+(define-enum SDLK_HASH)
+(define-enum SDLK_DOLLAR)
+(define-enum SDLK_AMPERSAND)
+(define-enum SDLK_QUOTE)
+(define-enum SDLK_LEFTPAREN)
+(define-enum SDLK_RIGHTPAREN)
+(define-enum SDLK_ASTERISK)
+(define-enum SDLK_PLUS)
+(define-enum SDLK_COMMA)
+(define-enum SDLK_MINUS)
+(define-enum SDLK_PERIOD)
+(define-enum SDLK_SLASH)
+(define-enum SDLK_0)
+(define-enum SDLK_1)
+(define-enum SDLK_2)
+(define-enum SDLK_3)
+(define-enum SDLK_4)
+(define-enum SDLK_5)
+(define-enum SDLK_6)
+(define-enum SDLK_7)
+(define-enum SDLK_8)
+(define-enum SDLK_9)
+(define-enum SDLK_COLON)
+(define-enum SDLK_SEMICOLON)
+(define-enum SDLK_LESS)
+(define-enum SDLK_EQUALS)
+(define-enum SDLK_GREATER)
+(define-enum SDLK_QUESTION)
+(define-enum SDLK_AT)
+;; Skip uppercase letters
+(define-enum SDLK_LEFTBRACKET)
+(define-enum SDLK_BACKSLASH)
+(define-enum SDLK_RIGHTBRACKET)
+(define-enum SDLK_CARET)
+(define-enum SDLK_UNDERSCORE)
+(define-enum SDLK_BACKQUOTE)
+(define-enum SDLK_a)
+(define-enum SDLK_b)
+(define-enum SDLK_c)
+(define-enum SDLK_d)
+(define-enum SDLK_e)
+(define-enum SDLK_f)
+(define-enum SDLK_g)
+(define-enum SDLK_h)
+(define-enum SDLK_i)
+(define-enum SDLK_j)
+(define-enum SDLK_k)
+(define-enum SDLK_l)
+(define-enum SDLK_m)
+(define-enum SDLK_n)
+(define-enum SDLK_o)
+(define-enum SDLK_p)
+(define-enum SDLK_q)
+(define-enum SDLK_r)
+(define-enum SDLK_s)
+(define-enum SDLK_t)
+(define-enum SDLK_u)
+(define-enum SDLK_v)
+(define-enum SDLK_w)
+(define-enum SDLK_x)
+(define-enum SDLK_y)
+(define-enum SDLK_z)
+(define-enum SDLK_DELETE)
+;; End of ASCII mapped keysyms
+
+;; International keyboard syms
+(define-enum SDLK_WORLD_0)
+(define-enum SDLK_WORLD_1)
+(define-enum SDLK_WORLD_2)
+(define-enum SDLK_WORLD_3)
+(define-enum SDLK_WORLD_4)
+(define-enum SDLK_WORLD_5)
+(define-enum SDLK_WORLD_6)
+(define-enum SDLK_WORLD_7)
+(define-enum SDLK_WORLD_8)
+(define-enum SDLK_WORLD_9)
+(define-enum SDLK_WORLD_10)
+(define-enum SDLK_WORLD_11)
+(define-enum SDLK_WORLD_12)
+(define-enum SDLK_WORLD_13)
+(define-enum SDLK_WORLD_14)
+(define-enum SDLK_WORLD_15)
+(define-enum SDLK_WORLD_16)
+(define-enum SDLK_WORLD_17)
+(define-enum SDLK_WORLD_18)
+(define-enum SDLK_WORLD_20)
+(define-enum SDLK_WORLD_21)
+(define-enum SDLK_WORLD_22)
+(define-enum SDLK_WORLD_23)
+(define-enum SDLK_WORLD_24)
+(define-enum SDLK_WORLD_25)
+(define-enum SDLK_WORLD_26)
+(define-enum SDLK_WORLD_27)
+(define-enum SDLK_WORLD_28)
+(define-enum SDLK_WORLD_29)
+(define-enum SDLK_WORLD_30)
+(define-enum SDLK_WORLD_31)
+(define-enum SDLK_WORLD_32)
+(define-enum SDLK_WORLD_33)
+(define-enum SDLK_WORLD_34)
+(define-enum SDLK_WORLD_35)
+(define-enum SDLK_WORLD_36)
+(define-enum SDLK_WORLD_37)
+(define-enum SDLK_WORLD_38)
+(define-enum SDLK_WORLD_39)
+(define-enum SDLK_WORLD_40)
+(define-enum SDLK_WORLD_41)
+(define-enum SDLK_WORLD_42)
+(define-enum SDLK_WORLD_43)
+(define-enum SDLK_WORLD_44)
+(define-enum SDLK_WORLD_45)
+(define-enum SDLK_WORLD_46)
+(define-enum SDLK_WORLD_47)
+(define-enum SDLK_WORLD_48)
+(define-enum SDLK_WORLD_49)
+(define-enum SDLK_WORLD_50)
+(define-enum SDLK_WORLD_51)
+(define-enum SDLK_WORLD_52)
+(define-enum SDLK_WORLD_53)
+(define-enum SDLK_WORLD_54)
+(define-enum SDLK_WORLD_55)
+(define-enum SDLK_WORLD_56)
+(define-enum SDLK_WORLD_57)
+(define-enum SDLK_WORLD_58)
+(define-enum SDLK_WORLD_59)
+(define-enum SDLK_WORLD_60)
+(define-enum SDLK_WORLD_61)
+(define-enum SDLK_WORLD_62)
+(define-enum SDLK_WORLD_63)
+(define-enum SDLK_WORLD_64)
+(define-enum SDLK_WORLD_65)
+(define-enum SDLK_WORLD_66)
+(define-enum SDLK_WORLD_67)
+(define-enum SDLK_WORLD_68)
+(define-enum SDLK_WORLD_69)
+(define-enum SDLK_WORLD_70)
+(define-enum SDLK_WORLD_71)
+(define-enum SDLK_WORLD_72)
+(define-enum SDLK_WORLD_73)
+(define-enum SDLK_WORLD_74)
+(define-enum SDLK_WORLD_75)
+(define-enum SDLK_WORLD_76)
+(define-enum SDLK_WORLD_77)
+(define-enum SDLK_WORLD_78)
+(define-enum SDLK_WORLD_79)
+(define-enum SDLK_WORLD_80)
+(define-enum SDLK_WORLD_81)
+(define-enum SDLK_WORLD_82)
+(define-enum SDLK_WORLD_83)
+(define-enum SDLK_WORLD_84)
+(define-enum SDLK_WORLD_85)
+(define-enum SDLK_WORLD_86)
+(define-enum SDLK_WORLD_87)
+(define-enum SDLK_WORLD_88)
+(define-enum SDLK_WORLD_89)
+(define-enum SDLK_WORLD_90)
+(define-enum SDLK_WORLD_91)
+(define-enum SDLK_WORLD_92)
+(define-enum SDLK_WORLD_93)
+(define-enum SDLK_WORLD_94)
+(define-enum SDLK_WORLD_95)
+
+;; Numeric keypad
+(define-enum SDLK_KP0)
+(define-enum SDLK_KP1)
+(define-enum SDLK_KP2)
+(define-enum SDLK_KP3)
+(define-enum SDLK_KP4)
+(define-enum SDLK_KP5)
+(define-enum SDLK_KP6)
+(define-enum SDLK_KP7)
+(define-enum SDLK_KP8)
+(define-enum SDLK_KP9)
+(define-enum SDLK_KP_PERIOD)
+(define-enum SDLK_KP_DIVIDE)
+(define-enum SDLK_KP_MULTIPLY)
+(define-enum SDLK_KP_MINUS)
+(define-enum SDLK_KP_PLUS)
+(define-enum SDLK_KP_ENTER)
+(define-enum SDLK_KP_EQUALS)
+
+;; Arrows + Home/End pad
+(define-enum SDLK_UP)
+(define-enum SDLK_DOWN)
+(define-enum SDLK_RIGHT)
+(define-enum SDLK_LEFT)
+(define-enum SDLK_INSERT)
+(define-enum SDLK_HOME)
+(define-enum SDLK_END)
+(define-enum SDLK_PAGEUP)
+(define-enum SDLK_PAGEDOWN)
+
+;; Function keys
+(define-enum SDLK_F1)
+(define-enum SDLK_F2)
+(define-enum SDLK_F3)
+(define-enum SDLK_F4)
+(define-enum SDLK_F5)
+(define-enum SDLK_F6)
+(define-enum SDLK_F7)
+(define-enum SDLK_F8)
+(define-enum SDLK_F9)
+(define-enum SDLK_F10)
+(define-enum SDLK_F11)
+(define-enum SDLK_F12)
+(define-enum SDLK_F13)
+(define-enum SDLK_F14)
+(define-enum SDLK_F15)
+
+;; Key state modifier keys
+(define-enum SDLK_NUMLOCK)
+(define-enum SDLK_CAPSLOCK)
+(define-enum SDLK_SCROLLOCK)
+(define-enum SDLK_RSHIFT)
+(define-enum SDLK_LSHIFT)
+(define-enum SDLK_RCTRL)
+(define-enum SDLK_LCTRL)
+(define-enum SDLK_RALT)
+(define-enum SDLK_LALT)
+(define-enum SDLK_RMETA)
+(define-enum SDLK_LMETA)
+(define-enum SDLK_LSUPER)
+(define-enum SDLK_RSUPER)
+(define-enum SDLK_MODE)
+(define-enum SDLK_COMPOSE)
+
+;; Miscellaneous function keys
+(define-enum SDLK_HELP)
+(define-enum SDLK_PRINT)
+(define-enum SDLK_SYSREQ)
+(define-enum SDLK_BREAK)
+(define-enum SDLK_MENU)
+(define-enum SDLK_POWER)
+(define-enum SDLK_EURO)
+(define-enum SDLK_UNDO)
+
+(define-enum SDLK_LAST)
+
+;; Enumeration of valid key mods (possibly OR'd together)
+(define-enum KMOD_NONE)
+(define-enum KMOD_LSHIFT)
+(define-enum KMOD_RSHIFT)
+(define-enum KMOD_LCTRL)
+(define-enum KMOD_RCTRL)
+(define-enum KMOD_LALT)
+(define-enum KMOD_RALT)
+(define-enum KMOD_LMETA)
+(define-enum KMOD_RMETA)
+(define-enum KMOD_NUM)
+(define-enum KMOD_CAPS)
+(define-enum KMOD_MODE)
+(define-enum KMOD_RESERVED)
+
+(define-enum KMOD_CTRL)
+(define-enum KMOD_SHIFT)
+(define-enum KMOD_ALT)
+(define-enum KMOD_META)
+
+
+;;------------------
+;; SDL_keyboard.h
+;;------------------
+
+(define-cclass <sdl-keysym>
+  :built-in :struct
+  "ScmSDL_keysym*" "Scm_SDL_keysymClass"
+  ()
+  (
+   (scancode :type <uint8>
+             :setter #f)
+   (sym :type <fixnum>
+        :setter #f)
+   (mod :type <fixnum>
+        :setter #f)
+   (unicode :type <uint16>
+            :setter #f))
+  (printer #t)
+  (compare #t)
+  )
+
+;;;;;
+;; Enable/Disable UNICODE translation of keyboard input.
+;;
+;; This translation has some overhead, so translation defaults off.
+;;
+;; @param enable
+;; If 'enable' is 1, translation is enabled.
+;; If 'enable' is 0, translation is disabled.
+;; If 'enable' is -1, the translation state is not changed.
+;;
+;; @return It returns the previous state of keyboard translation.
+(define-cproc sdl-enable-unicode (enable::<fixnum>) :: <boolean>
+  (result (SDL_EnableUNICODE enable)))
+
+(define-enum SDL_DEFAULT_REPEAT_DELAY)
+(define-enum SDL_DEFAULT_REPEAT_INTERVAL)
+
+;;;;;
+;; Enable/Disable keyboard repeat.  Keyboard repeat defaults to off.
+;; If 'delay' is set to 0, keyboard repeat is disabled.
+;;
+;;  @param delay
+;;  'delay' is the initial delay in ms between the time when a key is
+;;  pressed, and keyboard repeat begins.
+;;
+;;  @param interval
+;;  'interval' is the time in ms between keyboard repeat events.
+(define-cproc sdl-enable-key-repeat (delay::<int> interval::<int>) :: <int>
+  (result (SDL_EnableKeyRepeat delay interval)))
+
+(define-cproc sdl-get-key-repeat () :: (<int> <int>)
+  (let* ([delay::int]
+         [interval::int])
+    (SDL_GetKeyRepeat (& delay) (& interval))
+    (result delay interval)))
+
+;;;;;
+;;Get a snapshot of the current state of the keyboard.
+;; Returns an array of keystates, indexed by the SDLK_* syms.
+;; Usage:
+;; (let ((keystate (sdl-get-key-state)))
+;;   (if (not (zero? (u16vector-ref keystate SDLK_RETURN)))
+;;      ;;return is pressed))
+(define-cproc sdl-get-key-state () :: <u8vector>
+  (let* ([numkeys::int]
+         [states::Uint8* (SDL_GetKeyState (& numkeys))])
+    (result (cast ScmU8Vector* (Scm_MakeU8VectorFromArrayShared numkeys states)))))
+
+;;;;;
+;; Get the current key modifier state
+(define-cproc sdl-get-mod-state () :: <fixnum>
+  (result (SDL_GetModState)))
+
+;;;;;
+;; Set the current key modifier state.
+;; This does not change the keyboard state, only the key modifier flags.
+(define-cproc sdl-set-mod-state (modstate::<fixnum>) :: <void>
+  (SDL_SetModState modstate))
+
+;;;;;
+;; Get the name of an SDL virtual keysym
+(define-cproc sdl-get-key-name (key::<fixnum>) :: <const-cstring>
+  (result (SDL_GetKeyName key)))
+
+
+;;------------------
+;; SDL_mouse.h
+;;------------------
+
+;;;;;
+;; Retrieve the current state of the mouse.
+;; The current button state is returned as a button bitmask, which can
+;; be tested using the SDL_BUTTON(X) macros, and x and y are set to the
+;; current mouse cursor position.  You can pass NULL for either x or y.
+(define-cproc sdl-get-mouse-state () ::(<int> <int> <uint8>)
+  (let* ([x::int]
+         [y::int]
+         [state::int (SDL_GetMouseState (& x) (& y))])
+    (result x y state)))
+
+;;;;;
+;; Retrieve the current state of the mouse.
+;; The current button state is returned as a button bitmask, which can
+;; be tested using the SDL_BUTTON(X) macros, and x and y are set to the
+;; mouse deltas since the last call to SDL_GetRelativeMouseState().
+(define-cproc sdl-get-relative-mouse-state () ::(<int> <int> <uint8>)
+  (let* ([x::int]
+         [y::int]
+         [state::int (SDL_GetRelativeMouseState (& x) (& y))])
+    (result x y state)))
+
+;;;;;
+;; Set the position of the mouse cursor (generates a mouse motion event)
+(define-cproc sdl-warp-mouse (x::<uint16> y::<uint16>) ::<void>
+  (SDL_WarpMouse x y))
+
+;;;;;
+;; Create a cursor using the specified data and mask (in MSB format).
+;; The cursor width must be a multiple of 8 bits.
+;;
+;; The cursor is created in black and white according to the following:
+;; data  mask    resulting pixel on screen
+;;  0     1       White
+;;  1     1       Black
+;;  0     0       Transparent
+;;  1     0       Inverted color if possible, black if not.
+;;
+;; Cursors created with this function must be freed with sdl-free-cursor.
+(define-cproc sdl-create-cursor (data::<u8vector> mask::<u8vector>
+                                 w::<int> h::<int> hot-x::<int> hot-y::<int>) :: <sdl-cursor>
+  (result (SDL_CreateCursor (SCM_U8VECTOR_ELEMENTS data) 
+                            (SCM_U8VECTOR_ELEMENTS mask)
+                            w h hot-x hot-y)))
+
+;;;;;
+;; Set the currently active cursor to the specified one.
+;; If the cursor is currently visible, the change will be immediately 
+;; represented on the display.
+(define-cproc sdl-set-cursor (cursor::<sdl-cursor>) :: <void>
+  (ENSURE_NOT_NULL cursor)
+  (SDL_SetCursor cursor))
+
+;;;;;
+;; Returns the currently active cursor.
+(define-cproc sdl-get-cursor () :: <sdl-cursor>
+  (result (SDL_GetCursor)))
+
+;;;;;
+;; Deallocates a cursor created with sdl-create-cursor.
+(define-cproc sdl-free-cursor (cursor::<sdl-cursor>) :: <void>
+  (when cursor
+    (SDL_FreeCursor cursor)
+    (set! (-> (SCM_FOREIGN_POINTER cursor-scm) ptr) 0)))
+
+;;;;;
+;; Toggle whether or not the cursor is shown on the screen.
+;; The cursor start off displayed, but can be turned off.
+;; SDL_ShowCursor returns #t if the cursor was being displayed
+;; before the call, or #f if it was not.  You can query the current
+;; state by passing a 'toggle' value of SDL_QUERY.
+;;
+;; @param toggle SDL_ENABLE or SDL_DISABLE or SDL_QUERY
+(define-cproc sdl-show-cursor (toggle::<fixnum>) ::<boolean>
+  (result (SDL_ShowCursor toggle)))
+
+(define-enum SDL_BUTTON_LMASK)
+(define-enum SDL_BUTTON_MMASK)
+(define-enum SDL_BUTTON_RMASK)
+(define-constant SDL_BUTTON_WUMASK (SDL_BUTTON SDL_BUTTON_WHEELUP))
+(define-constant SDL_BUTTON_WDMASK (SDL_BUTTON SDL_BUTTON_WHEELDOWN))
+(define-enum SDL_BUTTON_X1MASK)
+(define-enum SDL_BUTTON_X2MASK)
+
+
+;;------------------
+;; SDL_joystick.h
+;;------------------
+
+;;;;;
+;; Count the number of joysticks attached to the system
+(define-cproc sdl-num-joysticks () ::<int>
+  (result (SDL_NumJoysticks)))
+
+;;;;;
+;; Get the implementation dependent name of a joystick.
+;; This can be called before any joysticks are opened.
+;; If no name can be found, this function returns NULL.
+(define-cproc sdl-num-joystick-name (device-index::<int>) ::<const-cstring>
+  (result (SDL_JoystickName device-index)))
+
+
+;;;;;
+;; Open a joystick for use.
+;;
+;; @param device-index
+;; The index passed as an argument refers to
+;; the N'th joystick on the system.  This index is the value which will
+;; identify this joystick in future joystick events.
+;;
+;; @return This function returns a joystick identifier.
+;; Raise <sdl-error> if an error occurred.
+(define-cproc sdl-joystick-open (device-index::<int>) ::<top>
+  (let* ([joystick::SDL_Joystick* (SDL_JoystickOpen device-index)])
+    (if (zero? joystick)
+      (result (boxing joystick <sdl-joystick>))
+      (raise-sdl-error sdl-joystick-open))))
+
+;;;;;;
+;; Returns #t if the joystick has been opened, or #f if it has not.
+(define-cproc sdl-joystick-opend (device-index::<int>) ::<boolean>
+  (result (SDL_JoystickOpened device-index)))
+
+;;;;;
+;; Get the device index of an opened joystick.
+(define-cproc sdl-joystick-index (joystick::<sdl-joystick>) ::<int>
+  (ENSURE_NOT_NULL joystick)
+  (result (SDL_JoystickIndex joystick)))
+
+;;;;;
+;; Get the number of general axis controls on a joystick
+(define-cproc sdl-joystick-num-axes (joystick::<sdl-joystick>) ::<int>
+  (ENSURE_NOT_NULL joystick)
+  (result (SDL_JoystickNumAxes joystick)))
+
+;;;;;
+;; Get the number of trackballs on a joystick
+;;
+;; Joystick trackballs have only relative motion events associated
+;; with them and their state cannot be polled.
+(define-cproc sdl-joystick-num-balls (joystick::<sdl-joystick>) ::<int>
+  (ENSURE_NOT_NULL joystick)
+  (result (SDL_JoystickNumBalls joystick)))
+
+;;;;;
+;; Get the number of POV hats on a joystick
+(define-cproc sdl-joystick-num-hats (joystick::<sdl-joystick>) ::<int>
+  (ENSURE_NOT_NULL joystick)
+  (result (SDL_JoystickNumHats joystick)))
+
+;;;;;
+;; Get the number of buttons on a joystick
+(define-cproc sdl-joystick-num-buttons (joystick::<sdl-joystick>) ::<int>
+  (ENSURE_NOT_NULL joystick)
+  (result (SDL_JoystickNumButtons joystick)))
+
+;;;;;
+;; Update the current state of the open joysticks.
+;;
+;; This is called automatically by the event loop if any joystick
+;; events are enabled.
+(define-cproc sdl-joystick-update () ::<void>
+  (SDL_JoystickUpdate))
+
+;;;;;
+;; Enable/disable joystick event polling.
+;;
+;; If joystick events are disabled, you must call sdl-joystick-update
+;; yourself and check the state of the joystick when you want joystick
+;; information.
+;;
+;; @param state The state can be one of SDL_QUERY, SDL_ENABLE or SDL_IGNORE.
+(define-cproc sdl-joystick-event-state (state::<fixnum>) ::<int>
+  (result (SDL_JoystickEventState state)))
+
+;;;;;
+;; Get the current state of an axis control on a joystick
+;;
+;; @param axis The axis indices start at index 0.
+;;
+;; @return The state is a value ranging from -32768 to 32767.
+(define-cproc sdl-joystick-get-axis (joystick::<sdl-joystick> axis::<int>) ::<int16>
+  (ENSURE_NOT_NULL joystick)
+  (result (SDL_JoystickGetAxis joystick axis)))
+
+(define-enum SDL_HAT_UP)
+(define-enum SDL_HAT_DOWN)
+(define-enum SDL_HAT_RIGHT)
+(define-enum SDL_HAT_RIGHTUP)
+(define-enum SDL_HAT_RIGHTDOWN)
+(define-enum SDL_HAT_LEFT)
+(define-enum SDL_HAT_LEFTUP)
+(define-enum SDL_HAT_LEFTDOWN)
+(define-enum SDL_HAT_CENTERED)
+
+;;;;;
+;;  Get the current state of a POV hat on a joystick
+;;
+;;  @param hat The hat indices start at index 0.
+(define-cproc sdl-joystick-get-hat (joystick::<sdl-joystick> hat::<int>) ::<uint8>
+  (ENSURE_NOT_NULL joystick)
+  (result (SDL_JoystickGetHat joystick hat)))
+
+;;;;;
+;; Get the ball axis change since the last poll
+;;
+;; @param ball The ball indices start at index 0.
+;;
+;; @return This returns (x y).
+;; Raise <sdl-error>  if you passed it invalid parameters.
+(define-cproc sdl-joystick-get-ball (joystick::<sdl-joystick> ball::<int>) ::(<top> <top>)
+  (ENSURE_NOT_NULL joystick)
+  (let* ([x::int]
+         [y::int])
+    (if (zero? (SDL_JoystickGetBall joystick ball (& x) (& y)))
+      (result (boxing x <int>) (boxing y <int>))
+      (raise-sdl-error sdl-joystick-get-ball))))
+
+;;;;;
+;; Get the current state of a button on a joystick
+;;
+;; @param button The button indices start at index 0.
+(define-cproc sdl-joystick-get-button (joystick::<sdl-joystick> button::<int>) ::<uint8>
+  (ENSURE_NOT_NULL joystick)
+  (result (SDL_JoystickGetButton joystick button)))
+
+;;;;;
+;; Close a joystick previously opened with sdl-joystick-close
+(define-cproc sdl-joystick-close (joystick::<sdl-joystick>) ::<void>
+  (when joystick
+    (SDL_JoystickClose joystick)
+    (set! (-> (SCM_FOREIGN_POINTER joystick_scm) ptr) 0)))
+
+    
+;;------------------
+;; SDL_quit.h
+;;------------------
+
+
+
+;;------------------
+;; SDL_events.h
+;;------------------
+
+(define-enum SDL_NOEVENT)
+(define-enum SDL_ACTIVEEVENT)
+(define-enum SDL_KEYDOWN)
+(define-enum SDL_KEYUP)
+(define-enum SDL_MOUSEMOTION)
+(define-enum SDL_MOUSEBUTTONDOWN)
+(define-enum SDL_MOUSEBUTTONUP)
+(define-enum SDL_JOYAXISMOTION)
+(define-enum SDL_JOYBALLMOTION)
+(define-enum SDL_JOYHATMOTION)
+(define-enum SDL_JOYBUTTONDOWN)
+(define-enum SDL_JOYBUTTONUP)
+(define-enum SDL_QUIT)
+(define-enum SDL_SYSWMEVENT)
+(define-enum SDL_EVENT_RESERVEDA)
+(define-enum SDL_EVENT_RESERVEDB)
+(define-enum SDL_VIDEORESIZE)
+(define-enum SDL_VIDEOEXPOSE)
+(define-enum SDL_EVENT_RESERVED2)
+(define-enum SDL_EVENT_RESERVED3)
+(define-enum SDL_EVENT_RESERVED4)
+(define-enum SDL_EVENT_RESERVED5)
+(define-enum SDL_EVENT_RESERVED6)
+(define-enum SDL_EVENT_RESERVED7)
+(define-enum SDL_USEREVENT)
+(define-enum SDL_NUMEVENTS)
+
+(define-enum SDL_ALLEVENTS)
+
+(define-enum SDL_ADDEVENT)
+(define-enum SDL_PEEKEVENT)
+(define-enum SDL_GETEVENT)
+
+(define-enum SDL_QUERY)
+(define-enum SDL_IGNORE)
+(define-enum SDL_DISABLE)
+(define-enum SDL_ENABLE)
+
+;;;;;
+;; @slot type kind of event type
+(define-cclass <sdl-event>
+  :built-in :struct
+  "ScmSdl_Event*" "Scm_SDL_EventClass"
+  ()
+  (
+   (type :type <uint8>
+         :setter #f)
+   )
+   (printer #t)
+   )
+
+;;;;;
+;; Application visibility event structure
+;;
+;; @slot gain Whether given states were gained or lost (#t/#f)
+;; @slot state A mask of the focus states
+(define-cclass <sdl-active-event>
+  :built-in :struct
+  "ScmSDL_ActiveEvent*" "Scm_SDL_ActiveEventClass"
+  ("Scm_SDL_EventClass")
+  (
+   (gain :type <boolean>
+         :setter #f)
+   (state :type <uint8>
+          :setter #f)
+  )
+  (printer #t)
+  )
+
+;;;;;
+;; Keyboard event structure
+;; @slot which The keyboard device index
+;; @slot state SDL_PRESSED or SDL_RELEASED
+(define-cclass <sdl-keyboard-event>
+  :built-in :struct
+  "ScmSDL_KeyboardEvent*" "Scm_SDL_KeyboardEventClass"
+  ("Scm_SDL_EventClass")
+  (
+   (which :type <uint8>
+          :setter #f)
+   (state :type <uint8>
+          :setter #f)
+   (keysym :type <sdl-keysym>
+           :setter #f)
+   )
+  (printer #t)
+  )
+
+;;;;;
+;; Mouse motion event structure
+;; @slot which The mouse device index
+;; @slot state The current button state
+;; @slot x The x cordinates of the mouse
+;; @slot y The y cordinates of the mouse
+;; @slot xrel The relative motion in the X direction
+;; @slot yrel The relative motion in the Y direction
+(define-cclass <sdl-mouse-motion-event>
+  :built-in :struct
+  "ScmSDL_MouseMotionEvent*" "Scm_SDL_MouseMotionEventClass"
+  ("Scm_SDL_EventClass")
+  (
+   (which :type <uint8>
+          :setter #f)
+   (state :type <uint8>
+          :setter #f)
+   (x :type <uint16>
+      :setter #f)
+   (y :type <uint16>
+      :setter #f)
+   (xrel :type <int16>
+      :setter #f)
+   (yrel :type <int16>
+      :setter #f)
+   )
+  (printer #t)
+  )
+
+;;;;;
+;; Mouse button event structure
+;; @slot which The mouse device index
+;; @slot button The mouse butotn index
+;; @slot state SDL_PRESSED or SDL_RELEASED
+;; @slot x The X cordinates of the mouse at press time
+;; @slot y The Y cordinates of the mouse at press time
+(define-cclass <sdl-mouse-button-event>
+  :built-in :struct
+  "ScmSDL_MouseButtonEvent*" "Scm_SDL_MouseButtonEventClass"
+  ("Scm_SDL_EventClass")
+  (
+   (which :type <uint8>
+          :setter #f)
+   (button :type <uint8>
+           :setter #f)
+   (state :type <uint8>
+          :setter #f)
+   (x :type <uint16>
+      :setter #f)
+   (y :type <uint16>
+      :setter #f)
+   )
+  (printer #t)
+  )
+
+;;;;;
+;; Joystick axis motion event structure
+;; @slot which The joystick device index
+;; @slot axis The joystick axis index
+;; @slot value The axis value (range: -32768 to 32767)
+(define-cclass <sdl-joy-axis-event>
+  :built-in :struct
+  "ScmSDL_JoyAxisEvent*" "Scm_SDL_JoyAxisEventClass"
+  ("Scm_SDL_EventClass")
+  (
+   (which :type <uint8>
+          :setter #f)
+   (axis :type <uint8>
+         :setter #f)
+   (value :type <int16>
+          :setter #f)
+   )
+  (printer #t)
+  )
+
+;;;;;
+;; Joystick trackball motion event structure
+;; @slot which The joystick device index
+;; @slot ball The joystick trackball index
+;; @slot xrel The relative motion in the X direction
+;; @slot yrel The relative motion in the Y direction
+(define-cclass <sdl-joy-ball-event>
+  :built-in :struct
+  "ScmSDL_JoyBallEvent*" "Scm_SDL_JoyBallEventClass"
+  ("Scm_SDL_EventClass")
+  (
+   (which :type <uint8>
+          :setter #f)
+   (ball :type <uint8>
+         :setter #f)
+   (xrel :type <int16>
+      :setter #f)
+   (yrel :type <int16>
+      :setter #f)
+   )
+  (printer #t)
+  )
+
+;;;;;
+;; Joystick hat position change event structure
+;; @slot which The joystick device index
+;; @slot hat The joystick hat index
+;; @slot value The hat position value:
+;;  SDL_HAT_LEFTUP    SDL_HAT_UP      SDL_HAT_RIGHTUP
+;;  SDL_HAT_LEFT      SDL_HAT_CENTERD SDL_HAT_RIGHT
+;;  SDL_HAT_LEFTDOWN  SDL_HAT_DOWN    SDL_HAT_RIGHTDOWN
+;; Note that zero means the POV is centerd.
+(define-cclass <sdl-joy-hat-event>
+  :built-in :struct
+  "ScmSDL_JoyHatEvent*" "Scm_SDL_JoyHatEventClass"
+  ("Scm_SDL_EventClass")
+  (
+   (which :type <uint8>
+          :setter #f)
+   (hat :type <uint8>
+        :setter #f)
+   (value :type <uint8>
+          :setter #f)
+   )
+  (printer #t)
+  )
+
+;;;;;
+;; Joystick button event structure
+;; @slot which The joystick device index
+;; @slot button The joystick button index
+;; @slot state state SDL_PRESSED or SDL_RELEASED
+(define-cclass <sdl-joy-button-event>
+  :built-in :struct
+  "ScmSDL_JoyButtonEvent*" "Scm_SDL_JoyButtonEventClass"
+  ("Scm_SDL_EventClass")
+  (
+   (which :type <uint8>
+          :setter #f)
+   (button :type <uint8>
+           :setter #f)
+   (state :type <uint8>
+          :setter #f)
+   )
+  (printer #t)
+  )
+
+;;;;;
+;; The "window resized" event
+;; When you get this event, you are responsible for setting a new video mode with the new width and height.
+;; @slot w New width
+;; @slot h New height
+(define-cclass <sdl-resize-event>
+  :built-in :struct
+  "ScmSDL_ResizeEvent*" "Scm_SDL_ResizeEventClass"
+  ("Scm_SDL_EventClass")
+  (
+   (w :type <int>
+      :setter #f)
+   (h :type <int>
+      :setter #f)
+   )
+  (printer #t)
+  )
+
+;;;;;
+;; The "screen redraw" event
+(define-cclass <sdl-expose-event>
+  :built-in :struct
+  "ScmSDL_ExposeEvent*" "Scm_SDL_ExposeEventClass"
+  ("Scm_SDL_EventClass")
+  ()
+   )
+
+;;;;;
+;; The "quit requested" event
+(define-cclass <sdl-quit-event>
+  :built-in :struct
+  "ScmSDL_QuitEvent*" "Scm_SDL_QuitEventClass"
+  ("Scm_SDL_EventClass")
+  ()
+   )
+
+;;;;;
+;; A user-defined event type
+;; @slot code User defined event code
+;; @slot data1 User defined data 
+;; @slot data2 User defined data
+(define-cclass <sdl-user-event>
+  :built-in :struct
+  "ScmSDL_UserEvent*" "Scm_SDL_UserEventClass"
+  ("Scm_SDL_EventClass")
+  (
+   (code :type <int>
+         :setter #f)
+   (data1 :type <top>
+          :setter #f)
+   (data2 :type <top>
+          :setter #f)
+   )
+  (printer #t)
+  )
+
+;;TODO SDL_SysWMmsg
+
+;;;;;
+;; Pumps the event loop, gathering events from the input devices.
+;;  This function updates the event queue and internal input device state.
+;;  This should only be run in the thread that sets the video mode.
+(define-cproc sdl-pump-events () ::<void>
+  (SDL_PumpEvents))
+
+;; not support
+;(define-enum SDL_ADDEVENT)
+(define-enum SDL_PEEKEVENT)
+(define-enum SDL_GETEVENT)
+
+"
+#define TMP_ARY_SIZE 10
+"
+(eval-in-current-module
+  (gen-elem-assign <sdl-event>)
+  )
+;;;;;
+;; events will be added to back of the event queue.
+;; This function is equivalent to SDL_PeepEvents(events, num_event, SDL_ADDEVENT, 0).
+;; This function is thread-safe.
+;; @return Thif function returns the number of events actual stored.
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-peep-events-add (events::<top>) :: <int>
+  (let* ([size::int]
+         [p-events::SDL_Event*]
+         [tmp-ary :: (.array SDL_Event (TMP_ARY_SIZE))])
+    (cond
+      [(is-type? events <vector>)
+       (set! size (SCM_VECTOR_SIZE events))
+       (vector-to-ary events p-events tmp-ary TMP_ARY_SIZE SDL_Event <sdl-event>-elem-assign)]
+      [(is-type? events <list>)
+       (list-to-ary events p-events tmp-ary TMP_ARY_SIZE size SDL_Event <sdl-event>-elem-assign)]
+      [(is-type? events <sdl-event>)
+       (set! size 1)
+       (set! (aref tmp-ary 0) (unboxing events <sdl-event>))
+       (set! p-events tmp-ary)]
+      [else (Scm_Error "The 1 argument requires a <vector> or <list> or <sdl-events>, but got %S" events)])
+    (let* ([ret :: int (SDL_PeepEvents p-events size SDL_ADDEVENT 0)])
+      (if (< ret 0)
+        (raise-sdl-error sdl-peep-events-add)
+        (result ret)))))
+
+(define-cfn make-scm-sdl-event (event::SDL_Event*) :: ScmObj
+  (let* ([ret :: void*])
+    (case (@ event->type)
+      [(SDL_ACTIVEEVENT) 
+        (set! ret (boxing (* (cast SDL_ActiveEvent* event)) <sdl-active-event>))]
+      [(SDL_KEYDOWN SDL_KEYUP) 
+        (set! ret (boxing (* (cast SDL_KeyboardEvent* event)) <sdl-keyboard-event>))]
+      [(SDL_MOUSEMOTION) 
+        (set! ret (boxing (* (cast SDL_MouseMotionEvent* event)) <sdl-mouse-motion-event>))]
+      [(SDL_MOUSEBUTTONDOWN SDL_MOUSEBUTTONUP) 
+        (set! ret (boxing (* (cast SDL_MouseButtonEvent* event)) <sdl-mouse-button-event>))]
+      [(SDL_JOYAXISMOTION) 
+        (set! ret (boxing (* (cast SDL_JoyAxisEvent* event)) <sdl-joy-axis-event>))]
+      [(SDL_JOYBALLMOTION)
+        (set! ret (boxing (* (cast SDL_JoyBallEvent* event)) <sdl-joy-ball-event>))]
+      [(SDL_JOYHATMOTION)
+        (set! ret (boxing (* (cast SDL_JoyHatEvent* event)) <sdl-joy-hat-event>))]
+      [(SDL_JOYBUTTONDOWN SDL_JOYBUTTONUP)
+        (set! ret (boxing (* (cast SDL_JoyButtonEvent* event)) <sdl-joy-button-event>))]
+      [(SDL_VIDEORESIZE)
+        (set! ret (boxing (* (cast SDL_ResizeEvent* event)) <sdl-resize-event>))]
+      [(SDL_VIDEOEXPOSE)
+        (set! ret (boxing (* (cast SDL_ExposeEvent* event)) <sdl-expose-event>))]
+      [(SDL_QUIT) 
+        (set! ret (boxing (* (cast SDL_QuitEvent* event)) <sdl-quit-event>))]
+      [(SDL_USEREVENT) 
+        (set! ret (boxing (* (cast SDL_UserEvent* event)) <sdl-user-event>))]
+      [(SDL_SYSWMEVENT) 
+        (Scm_Error "SDL_SYSWMEVENT")]
+      [else (Scm_Error "Unkwon type event")])
+    (return (cast ScmObj ret))))
+
+;;;;;
+;;  If 'action' is SDL_PEEKEVENT, up to 'numevents' events at the front
+;;  of the event queue, matching 'mask', will be returned and will not
+;;  be removed from the queue.
+;;  If 'action' is SDL_GETEVENT, up to 'numevents' events at the front 
+;;  of the event queue, matching 'mask', will be returned and will be
+;;  removed from the queue.
+;;
+;;  This function is thread-safe.
+(define-cproc sdl-peep-events (numevents::<int> action::<fixnum> mask::<uint32>) :: <top>
+  (if (== action SDL_ADDEVENT)
+    (Scm_Error "SDL_ADDEVENT not support. Please use sdl-peep-events-add function"))
+  (let* ([tmp-ary :: (.array SDL_Event (TMP_ARY_SIZE))]
+         [events :: SDL_Event* (?: (<= numevents TMP_ARY_SIZE)
+                                   tmp-ary
+                                   (SCM_NEW_ARRAY SDL_Event numevents))]
+         [result :: int (SDL_PeepEvents events numevents action mask)])
+    (if (<  result 0)
+      (raise-sdl-error sdl-peep-events)
+      (let* ([c :: ScmObj SCM_NIL])
+        (dotimes [i result]
+          (set! c (Scm_Cons (make-scm-sdl-event (+ events (- result 1 i))) c)))
+        (result c)))))
+
+;;;;;
+;; Polls for currently pending events, and returns event object if there are any pending
+;; events, or #f if there are none available. 
+(define-cproc sdl-poll-event () :: <top>
+  (let* ([event :: SDL_Event])
+    (if (SDL_PollEvent (& event))
+      (result (make-scm-sdl-event (& event)))
+      (result (boxing 0 <boolean>)))))
+
+;;;;;
+;;  Waits indefinitely for the next available event, returning event object, 
+;;  or raise <sdl-error> if there was an error while waiting for events. 
+(define-cproc sdl-wait-event () :: <top>
+  (let* ([event :: SDL_Event])
+    (if (SDL_WaitEvent (& event))
+      (result (make-scm-sdl-event (& event)))
+      (raise-sdl-error sdl-wait-event))))
+
+;;;;;
+;; Add an event to the event queue.
+;;  This function returns #t on success, or #f if the event queue was full
+;;  or there was some other error.
+(define-cproc sdl-push-event (event::<sdl-event>) :: <void>
+  (unless (zero? (SDL_PushEvent (& event)))
+    (raise-sdl-error sdl-push-event)))
+
+;;not support SDL_SetEventFilter SDL_GetEventFilter
+
+
+;;;;;
+;; This function allows you to set the state of processing certain events.
+;; If 'state' is set to SDL_IGNORE, that event will be automatically dropped
+;; from the event queue and will not event be filtered.
+;; If 'state' is set to SDL_ENABLE, that event will be processed normally.
+;; If 'state' is set to SDL_QUERY, sdl-event-state will return the 
+;; current processing state of the specified event.
+(define-cproc sdl-event-state (type::<uint8> state::<fixnum>) :: <uint8>
+  (result (SDL_EventState type state)))
+
+
+;;------------------
+;; SDL_loadso.h
+;;------------------
+;;not support
+
+
+;;------------------
+;; SDL_mutex.h
+;;------------------
+
+;;;;;
+;; The SDL mutex structure.
+(define-cproc make-sdl-mutex () :: <sdl-mutex>
+  (result (SDL_CreateMutex)))
+
+;;;;;
+;; Lock the mutex
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-mutex-p (mutex::<sdl-mutex>) :: <void>
+  (unless (zero? (SDL_mutexP mutex))
+    (raise-sdl-error sdl-mutex-p)))
+
+;;;;;
+;; Lock the mutex
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-lock-mutex (mutex::<sdl-mutex>) :: <void>
+  (unless (zero? (SDL_LockMutex mutex))
+    (raise-sdl-error sdl-lock-mutex)))
+
+;;;;;
+;; Unlock the mutex
+;;  It is an error to unlock a mutex that has not been locked by
+;;  the current thread, and doing so results in undefined behavior.
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-mutex-v (mutex::<sdl-mutex>) :: <void>
+  (unless (zero? (SDL_mutexV mutex))
+    (raise-sdl-error sdl-mutex-v)))
+
+;;;;;
+;; Unlock the mutex
+;;  It is an error to unlock a mutex that has not been locked by
+;;  the current thread, and doing so results in undefined behavior.
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-unlock-mutex (mutex::<sdl-mutex>) :: <void>
+  (unless (zero? (SDL_UnlockMutex mutex))
+    (raise-sdl-error sdl-unlock-mutex)))
+
+;;;;;
+;; Destroy a mutex
+(define-cproc sdl-destroy-mutex (mutex::<sdl-mutex>) :: <void>
+  (when (not (zero? mutex))
+    (SDL_DestroyMutex mutex)
+    (set! (-> (SCM_FOREIGN_POINTER mutex_scm) ptr) 0)))
+
+;;;;;
+;; Create a semaphore, initialized with value, returns NULL on failure.
+(define-cproc make-sdl-semaphore (initial-value::<uint32>) :: <sdl-semaphore>
+  (result (SDL_CreateSemaphore initial-value)))
+
+;;;;;
+;; Destroy a semaphore
+(define-cproc sdl-destroy-semaphore (sem::<sdl-semaphore>) :: <void>
+  (when (not (zero? sem))
+    (SDL_DestroySemaphore sem)
+    (set! (-> (SCM_FOREIGN_POINTER sem_scm) ptr) 0)))
+
+;;;;;
+;; This function suspends the calling thread until the semaphore pointed 
+;; to by sem has a positive count. It then atomically decreases the semaphore count.
+(define-cproc sdl-sem-wait (sem::<sdl-semaphore>) :: <int>
+  (result (SDL_SemWait sem)))
+
+;;;;;
+;; Non-blocking variant of sdl-sem-wait
+;; @return #t if the wait succeeds,
+;;  #f if the wait would block, and raise <sdl-error> on error.
+(define-cproc sdl-sem-try-wait (sem::<sdl-semaphore>) :: <boolean>
+  (case (SDL_SemTryWait sem)
+    [(0) (result 1)]
+    [(SDL_MUTEX_TIMEDOUT) (result 0)]
+    [(-1) (raise-sdl-error sdl-sem-try-wait)]))
+
+;;;;;
+;; Variant of sdl-sem-wait with a timeout in milliseconds, returns #t if
+;;  the wait succeeds, #f if the wait does not succeed in
+;;  the allotted time, and raise <sdl-error> on error.
+;;
+;;  On some platforms this function is implemented by looping with a delay
+;;  of 1 ms, and so should be avoided if possible.
+(define-cproc sdl-sem-wait-timeout (sem::<sdl-semaphore> ms::<uint32>) ::<boolean>
+  (case (SDL_SemWaitTimeout sem ms)
+    [(0) (result 1)]
+    [(SDL_MUTEX_TIMEDOUT) (result 0)]
+    [(-1) (raise-sdl-error sdl-sem-wait-timeout)]))
+
+
+;;;;;
+;; Atomically increases the semaphore's count (not blocking).
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-sem-post (sem::<sdl-semaphore>) :: <void>
+  (unless (zero? (SDL_SemPost sem))
+    (raise-sdl-error sdl-sem-pos)))
+
+;;;;;
+;; Returns the current count of the semaphore
+(define-cproc sdl-sem-value (sem::<sdl-semaphore>) :: <uint32>
+  (result (SDL_SemValue sem)))
+
+;;;;;
+;; Create a condition variable
+(define-cproc make-sdl-cond () :: <sdl-cond>
+  (result (SDL_CreateCond)))
+
+;;;;;
+;; Destroy a condition variable
+(define-cproc sdl-destroy-cond (cond::<sdl-cond>) ::<void>
+  (when (not (zero? cond))
+    (SDL_DestroyCond cond)
+    (set! (-> (SCM_FOREIGN_POINTER cond_scm) ptr) 0)))
+
+;;;;;
+;; Restart one of the threads that are waiting on the condition variable,
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-cond-signal (cond::<sdl-cond>) :: <void>
+  (unless (zero? (SDL_CondSignal cond))
+    (raise-sdl-error sdl-cond-signal)))
+
+
+;;;;;
+;; Restart all threads that are waiting on the condition variable,
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-cond-broadcast (cond::<sdl-cond>) :: <void>
+  (unless (zero? (SDL_CondBroadcast cond))
+    (raise-sdl-error sdl-cond-broadcast)))
+
+;;;;;
+;; Wait on the condition variable, unlocking the provided mutex.
+;;  The mutex must be locked before entering this function!
+;;  The mutex is re-locked once the condition variable is signaled.
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-cond-wait (cond::<sdl-cond> mutex::<sdl-mutex>) :: <void>
+  (unless (zero? (SDL_CondWait cond mutex))
+    (raise-sdl-error sdl-cond-wait)))
+
+;;;;;
+;; Waits for at most 'ms' milliseconds, and returns #t if the condition
+;;  variable is signaled, #f if the condition is not
+;;  signaled in the allotted time, and raise <sdl-error> on error.
+;;  On some platforms this function is implemented by looping with a delay
+;;  of 1 ms, and so should be avoided if possible.
+(define-cproc sdl-cond-wait-timeout (cond::<sdl-cond> mutex::<sdl-mutex> ms::<uint32>) :: <boolean>
+  (case (SDL_CondWaitTimeout cond mutex ms)
+    [(0) (result 1)]
+    [(SDL_MUTEX_TIMEDOUT) (result 0)]
+    [(-1) (raise-sdl-error sdl-cond-wait-timeout)]))
+
+
+;;------------------
+;; SDL_rwops.h
+;;------------------
+
+(define-cfn user-seek (context::SDL_RWops* offset::int whence::int) :: int
+  (let* ([obj::ScmSDL_RWopsWrapper* (cast ScmSDL_RWopsWrapper* (@ context->hidden.unknown.data1))]
+         [wrapper::SDL_RWopsWrapper* (cast SDL_RWopsWrapper* (unboxing obj <sdl-rw-ops>))])
+    (if (SCM_UNBOUNDP (SCM_OBJ(@ wrapper->seek)))
+      (begin
+        (SDL_SetError "Cant't seek in this kind of RWOps")
+        (return -1))
+      (return (unboxing (Scm_ApplyRec3
+                          (SCM_OBJ (@ wrapper->seek))
+                          (SCM_OBJ obj)
+                          (boxing offset <int>)
+                          (boxing whence <int>))
+                        <int>)))))
+
+(define-cfn user-read (context::SDL_RWops* ptr::void* size::int maxnum::int) :: int
+  (let* ([obj::ScmSDL_RWopsWrapper* (cast ScmSDL_RWopsWrapper* (@ context->hidden.unknown.data1))]
+         [wrapper::SDL_RWopsWrapper* (cast SDL_RWopsWrapper* (unboxing obj <sdl-rw-ops>))])
+    (if (SCM_UNBOUNDP (SCM_OBJ (@ wrapper->read)))
+      (begin
+        (SDL_SetError "Cant't read in this kind of RWOps")
+        (return -1))
+      (begin
+        (SET_UNVECTOR_DATA (@ wrapper->vector) ptr TYPE_U8 (* size maxnum))
+        (return (unboxing (Scm_ApplyRec4
+                            (SCM_OBJ (@ wrapper->read))
+                            (SCM_OBJ obj)
+                            (SCM_OBJ (@ wrapper->vector))
+                            (boxing size <int>)
+                            (boxing maxnum <int>))
+                          <int>))))))
+
+(define-cfn user-write (context::SDL_RWops* ptr::(const void*) size::int maxnum::int) :: int
+  (let* ([obj::ScmSDL_RWopsWrapper* (cast ScmSDL_RWopsWrapper* (@ context->hidden.unknown.data1))]
+         [wrapper::SDL_RWopsWrapper* (cast SDL_RWopsWrapper* (unboxing obj <sdl-rw-ops>))])
+    (if (SCM_UNBOUNDP (SCM_OBJ (@ wrapper->write)))
+      (begin
+        (SDL_SetError "Cant't write in this kind of RWOps")
+        (return -1))
+      (begin
+        (SET_UNVECTOR_DATA (@ wrapper->vector) (cast void* ptr) TYPE_U8 (* size maxnum))
+        (return (unboxing (Scm_ApplyRec4
+                            (SCM_OBJ (@ wrapper->write))
+                            (SCM_OBJ obj)
+                            (SCM_OBJ (@ wrapper->vector))
+                            (boxing size <int>)
+                            (boxing maxnum <int>))
+                          <int>))))))
+
+(define-cfn user-close (context::SDL_RWops*) :: int
+  (let* ([obj::ScmSDL_RWopsWrapper* (cast ScmSDL_RWopsWrapper* (@ context->hidden.unknown.data1))]
+         [wrapper::SDL_RWopsWrapper* (cast SDL_RWopsWrapper* (unboxing obj <sdl-rw-ops>))])
+    (if (SCM_UNBOUNDP (SCM_OBJ (@ wrapper->close)))
+      (begin
+        (SDL_SetError "Cant't close in this kind of RWOps")
+        (return -1))
+      (return (unboxing (Scm_ApplyRec1
+                          (SCM_OBJ (@ wrapper->close))
+                          (SCM_OBJ obj))
+                        <int>)))))
+
+(define-cclass <sdl-rw-ops-user>
+  :built-in
+  "ScmSDL_RWopsWrapper*" "Scm_SDL_RWopsWrapperClass"
+  ()
+  (
+   (type :type <uint32>
+         :c-name "ops.type"
+         :setter #f)
+   (data :type <top>)
+   (seek :type <closure>)
+   (read :type <closure>)
+   (write :type <closure>)
+   (close :type <closure>)
+   )
+  )
+
+(define-cise-stmt (set!-keyword-val val obj sym-type)
+ `(unless (SCM_UNBOUNDP ,obj)
+   (assign-obj ,val ,obj ,sym-type)))
+
+(define-cproc make-rw-ops (type::<uint32> 
+                            :key 
+                            data::<closure>
+                            seek::<top>
+                            read::<top>
+                            write::<top>
+                            close::<top>) :: <top>
+  (let* ([wrapper :: SDL_RWopsWrapper* (SCM_NEW SDL_RWopsWrapper)])
+    (set! (@ wrapper->ops.type) type)
+    (set! (@ wrapper->ops.seek) user-seek)
+    (set! (@ wrapper->ops.read) user-read)
+    (set! (@ wrapper->ops.write) user-write)
+    (set! (@ wrapper->ops.close) user-close)
+    (set!-keyword-val (@ wrapper->seek) seek <closure>)
+    (set!-keyword-val (@ wrapper->read) read <closure>)
+    (set!-keyword-val (@ wrapper->write) write <closure>)
+    (set!-keyword-val (@ wrapper->close) close <closure>)
+    (let* ([obj :: ScmObj (boxing wrapper <sdl-rw-ops-user>)])
+     (set! (@ wrapper->ops.hidden.unknown.data1) obj)
+     (result obj))))
+
+(define-cproc sdl-rw-from-file (file::<const-cstring> mode::<const-cstring>) :: <sdl-rw-ops>
+  (result (SDL_RWFromFile file mode)))
+
+(define-cproc sdl-rw-from-mem (mem::<top>) :: <sdl-rw-ops>
+  (let* ([buf::void*]
+         [size::int])
+    (cond
+      [(is-type? mem <u8vector>)
+       (set! size (SCM_U8VECTOR_SIZE mem))
+       (set! buf (SCM_U8VECTOR_ELEMENTS mem))]
+      [(is-type? mem <u16vector>)
+       (set! size (* 2 (SCM_U8VECTOR_SIZE mem)))
+       (set! buf (SCM_U16VECTOR_ELEMENTS mem))]
+      [(is-type? mem <u32vector>)
+       (set! size (* 4 (SCM_U8VECTOR_SIZE mem)))
+       (set! buf (SCM_U32VECTOR_ELEMENTS mem))]
+      [(is-type? mem <unvector>)
+       (set! size (ref (unboxing mem <unvector>) size))
+       (set! buf (ref (unboxing mem <unvector>) buf))]
+      [else (Scm_Error "<u8vector> or <u16vector> or <u32vecotr> or <unvector> required, but got %S" mem)])
+    (result (SDL_RWFromMem buf size))))
+
+(define-cproc sdl-free-rw (area::<top>) :: <void>
+  (cond
+    [(is-type? area <sdl-rw-ops>)
+     (let* ([area-data :: SDL_RWops* (unboxing area <sdl-rw-ops>)])
+       (when area-data
+         (SDL_FreeRW area-data)
+         (set! (-> (SCM_FOREIGN_POINTER area_scm) ptr) 0)))]
+    [(is-type? area <sdl-rw-ops-user>)]
+    [else (Scm_Error "<sdl-rw-ops> required, but got %S." area)]))
+
+(define-enum RW_SEEK_SET)
+(define-enum RW_SEEK_CUR)
+(define-enum RW_SEEK_END)
+
+(define-cise-stmt (set-ctx-data var obj)
+  `(cond
+     [(is-type? ,obj <sdl-rw-ops>)
+      (set! ,var (unboxing ,obj <sdl-rw-ops>))]
+     [(is-type? ,obj <sdl-rw-ops-user>)
+      (set! ,var (cast SDL_RWops* (unboxing ,obj <sdl-rw-ops-user>)))]
+     [else (Scm_Error "<sdl-rw-ops> required, but got %S." ,obj)]))
+
+(define-cproc sdl-rw-seek (ctx::<top> offset::<int> whence::<int>) :: <int>
+  (let* ([ctx-data :: SDL_RWops*])
+    (set-ctx-data ctx-data ctx)
+    (ENSURE_NOT_NULL ctx-data)
+    (result (SDL_RWseek ctx-data offset whence))))
+
+(define-cproc sdl-rw-tail (ctx::<top>) :: <int>
+  (let* ([ctx-data :: SDL_RWops*])
+    (set-ctx-data ctx-data ctx)
+    (ENSURE_NOT_NULL ctx-data)
+    (result (SDL_RWtell ctx-data))))
+
+(define-cproc sdl-rw-read (ctx::<top> size::<int> n::<int>) :: <unvector>
+  (let* ([ctx-data :: SDL_RWops*])
+    (set-ctx-data ctx-data ctx)
+    (ENSURE_NOT_NULL ctx-data)
+    (let* ([buffer :: char* (SCM_NEW_ARRAY _char_t (* size n))]
+           [vec :: unvector]
+           [result :: int (SDL_RWread ctx-data buffer size n)])
+      (if (< result 0)
+        (raise-sdl-error sdl-rw-read)
+        (begin
+          (set! (@ vec.buf) buffer)
+          (set! (@ vec.size) (* size result))
+          (result vec))))))
+
+(define-cproc sdl-rw-write (ctx::<top> ptr::<top> size::<int> n::<int>) :: <int>
+  (let* ([ctx-data :: SDL_RWops*])
+    (set-ctx-data ctx-data ctx)
+    (ENSURE_NOT_NULL ctx-data)
+    (let* ([ptr-data :: void*])
+      (cond
+        [(is-type? ptr <unvector>)
+         (set! ptr-data (ref (unboxing ptr <unvector>) buf))]
+        [(is-type? ptr <u8vector>)
+         (set! ptr-data (SCM_U8VECTOR_ELEMENTS ptr))])
+      (result (SDL_RWwrite ctx-data ptr-data size n)))))
+
+(define-cproc sdl-rw-close (ctx::<top>) :: <int>
+  (let* ([ctx-data :: SDL_RWops*])
+    (set-ctx-data ctx-data ctx)
+    (ENSURE_NOT_NULL ctx-data)
+    (result (SDL_RWclose ctx-data))))
+
+;;not support SDL_thread
+
+
+;;------------------
+;; SDL_timer.h
+;;------------------
+
+;;;;;
+;; Get the number of milliseconds since the SDL library initialization.
+;; Note that this value wraps if the program runs for more than ~49 days.
+(define-cproc sdl-get-ticks () :: <uint32>
+  (result (SDL_GetTicks)))
+
+;;;;;
+;; Wait a specified number of milliseconds before returning */
+(define-cproc sdl-delay (ms::<uint32>) :: <void>
+  (SDL_Delay ms))
+
+"
+typedef struct TimerParamRec {
+ScmObj callback;
+ScmObj param;
+int first_callP;
+}TimerParam;
+
+static ScmVM* Scm_TimerVM;
+"
+(define-cfn sdl_timer_callback (interval::Uint32 param::void*) :: Uint32
+  (let* ([p :: TimerParam* (cast TimerParam* param)])
+    (when (@ p->first-call?)
+      (Scm_AttachVM Scm_TimerVM)
+      (set! (@ p->first-call?) 0))
+    (return (unboxing (Scm_ApplyRec2
+                        (@ p->callback)
+                        (boxing interval <uint32>)
+                        (@ p->param))
+                      <uint32>))))
+
+;;;;;
+;; Add a new timer to the pool of timers already running.
+;;  Returns a timer ID, or raise <sdl-error> when an error occurs.
+(define-cproc sdl-add-timer (interval::<uint32> callback::<closure> 
+                              :optional param::<top>) :: <sdl-timer>
+  (when (zero? Scm_TimerVM)
+    (set! Scm_TimerVM (Scm_NewVM (Scm_VM) (boxing "timer" <const-cstring>))))
+  (let* ([p :: TimerParam* (SCM_NEW TimerParam)])
+    (set! (@ p->callback) (SCM_OBJ callback))
+    (set! (@ p->param) param)
+    (set! (@ p->first-call?) 1)
+    (let* ([t :: SDL_TimerID (SDL_AddTimer interval sdl_timer_callback p)])
+      (if t
+        (result t)
+        (raise-sdl-error sddl-add-timer)))))
+
+;;;;;
+;; Remove one of the multiple timers knowing its ID.
+;; Returns a boolean value indicating success.
+(define-cproc sdl-remove-timer (timer::<sdl-timer>) :: <boolean>
+  (result (SDL_RemoveTimer timer)))
+
+
+;;------------------
+;; SDL_video.h
+;;------------------
+
+(define-cclass <sdl-rect>
+  :built-in :struct
+  "ScmSDL_Rect*" "Scm_SDL_RectClass"
+  ()
+  (
+   (x :type <int16>)
+   (y :type <int16>)
+   (w :type <uint8>)
+   (h :type <uint8>)
+   )
+  (printer #t)
+  (compare #t)
+  )
+
+(define-cproc make-sdl-rect (x::<int16> y::<int16>
+                                        w::<uint16> h::<uint16>):: <sdl-rect>
+  (let* ([rect :: SDL_Rect])
+    (set! (@ rect.x) x)
+    (set! (@ rect.y) y)
+    (set! (@ rect.w) w)
+    (set! (@ rect.h) h)
+    (result rect)))
+
+(define-cclass <sdl-color>
+  :built-in :struct
+  "ScmSDL_Color*" "Scm_SDL_ColorClass"
+  ()
+  (
+   (r :type <uint8>)
+   (g :type <uint8>)
+   (b :type <uint8>)
+   (unused :type <uint8>)
+   )
+  (printer #t)
+  (compare #t)
+  )
+
+(define-cproc make-sdl-color (r::<uint8> g::<uint8> b::<uint8>
+                                         :optional (unused::<uint8> 0)) :: <sdl-color>
+  (let* ([color :: SDL_Color])
+    (set! (@ color.r) r)
+    (set! (@ color.g) g)
+    (set! (@ color.b) b)
+    (set! (@ color.unused) unused)
+    (result color)))
+
+
+(define-cclass <sdl-palette>
+  :built-in :struct
+  "ScmSDL_Palette*" "Scm_SDL_PaletteClass"
+  ()
+  (
+   (ncolors :type <int>
+            :setter #f)
+   )
+  )
+
+(define-cclass <sdl-pixel-format>
+  :built-in
+  "ScmSDL_PixelFormat*" "Scm_SDL_PixelFormatClass"
+  ()
+  (
+   #;(;palette
+   )
+  (bits/pixel :type <uint8>
+              :setter #f
+              :c-name "BitsPerPixel")
+  (bytes/pixel :type <uint8>
+               :setter #f
+               :c-name "BytesPerPixel")
+  (r-loss :type <uint8>
+          :setter #f
+          :c-name "Rloss")
+  (g-loss :type <uint8>
+          :setter #f
+          :c-name "Gloss")
+  (b-loss :type <uint8>
+          :setter #f
+          :c-name "Bloss")
+  (a-loss :type <uint8>
+          :setter #f
+          :c-name "Aloss")
+  (r-shift :type <uint8>
+           :setter #f
+           :c-name "Rshift")
+  (g-shift :type <uint8>
+           :setter #f
+           :c-name "Gshift")
+  (b-shift :type <uint8>
+           :setter #f
+           :c-name "Bshift")
+  (a-shift :type <uint8>
+           :setter #f
+           :c-name "Ashift")
+  (r-mask :type <uint32>
+          :setter #f
+          :c-name "Rmask")
+  (g-mask :type <uint32>
+          :setter #f
+          :c-name "Gmask")
+  (b-mask :type <uint32>
+          :setter #f
+          :c-name "Bmask")
+  (a-mask :type <uint32>
+          :setter #f
+          :c-name "Amask")
+  (colorkey :type <uint32>
+            :setter #f
+            :c-name "colorkey")
+  (alpha :type <uint8>
+         :setter #f
+         :c-name "alpha")
+  )
+)
+
+(define-cclass <sdl-surface>
+  :built-in
+  "ScmSDL_Surface*" "Scm_SDL_SurfaceClass"
+  ()
+  (
+   (flags :type <uint32>
+          :setter #f)
+   ;(format)
+   (w :type <int>
+      :setter #f)
+   (h :type <int>
+      :setter #f)
+   (pitch :type <uint16>
+          :setter #f)
+   (pixels :type <unvector>
+           :setter #f
+           :getter "
+           unvector vec = {obj->pixels, obj->pitch};
+           return Scm_Makeunvector(vec);
+           ")
+           (clip-rect :type <sdl-rect>
+                      :setter #f)
+           )
+   )
+
+
+(define-enum SDL_SWSURFACE)
+(define-enum SDL_HWSURFACE)
+(define-enum SDL_ASYNCBLIT)
+
+(define-enum SDL_ANYFORMAT)
+(define-enum SDL_HWPALETTE)
+(define-enum SDL_DOUBLEBUF)
+(define-enum SDL_FULLSCREEN)
+(define-enum SDL_OPENGL)
+(define-enum SDL_OPENGLBLIT)
+(define-enum SDL_RESIZABLE)
+(define-enum SDL_NOFRAME)
+
+(define-cclass <sdl-video-info>
+  :built-in
+  "ScmSDL_VideoInfo*" "Scm_SDL_VideoInfoClass"
+  ()
+  (
+   (hw-available :type <boolean>
+                 :setter #f)
+   (wm-available :type <boolean>
+                 :setter #f)
+   (blit-hw :type <boolean>
+            :setter #f)
+   (blit-hw-CC :type <boolean>
+               :setter #f)
+   (blit-hw-A :type <boolean>
+              :setter #f)
+   (blit-sw :type <boolean>
+            :setter #f)
+   (blit-sw-CC :type <boolean>
+               :setter #f)
+   (blit-sw-A :type <boolean>
+              :setter #f)
+   (blit-fill :type <boolean>
+              :setter #f)
+   (video-mem :type <uint32>
+              :setter #f)
+   ;(vfmt )
+   (current-w :type <int>
+              :setter #f)
+   (current-h :type <int>
+              :setter #f)
+   )
+  )
+
+;; overlay
+(define-enum SDL_YV12_OVERLAY)
+(define-enum SDL_IYUV_OVERLAY)
+(define-enum SDL_YUY2_OVERLAY)
+(define-enum SDL_UYVY_OVERLAY)
+(define-enum SDL_YVYU_OVERLAY)
+
+(define-cclass <sdl-overlay>
+  :built-in
+  "ScmSDL_Overlay*" "Scm_SDL_OverlayClass"
+  ()
+  (
+   (format :type <uint32>
+           :setter #f)
+   (w :type <int>
+      :setter #f)
+   (h :type <int>
+      :setter #f)
+   (planes :type <int>
+           :setter #f)
+   (pitches :type <u16vector>
+            :setter #f
+            :getter "
+            return Scm_MakeU16VectorFromArrayShared(obj->planes, obj->pitches);
+            ")
+            (hw-overlay :type <boolean>
+                        :setter #f)
+            )
+   )
+
+(define-cproc sdl-overlay-pixels (overlay::<sdl-overlay> plane::<int>) :: <unvector>
+  (let* ([vec :: unvector])
+    (set! (@ vec.buf) (aref (@ overlay->pixels) plane))
+    (set! (@ vec.size) (aref (@ overlay->pitches) plane))
+    (result vec)))
+
+(define-enum SDL_GL_RED_SIZE)
+(define-enum SDL_GL_GREEN_SIZE)
+(define-enum SDL_GL_BLUE_SIZE)
+(define-enum SDL_GL_ALPHA_SIZE)
+(define-enum SDL_GL_BUFFER_SIZE)
+(define-enum SDL_GL_DOUBLEBUFFER)
+(define-enum SDL_GL_DEPTH_SIZE)
+(define-enum SDL_GL_STENCIL_SIZE)
+(define-enum SDL_GL_ACCUM_RED_SIZE)
+(define-enum SDL_GL_ACCUM_GREEN_SIZE)
+(define-enum SDL_GL_ACCUM_BLUE_SIZE)
+(define-enum SDL_GL_ACCUM_ALPHA_SIZE)
+
+(define-enum SDL_LOGPAL)
+(define-enum SDL_PHYSPAL)
+
+;;;;;
+;; This function fills the given character buffer with the name of the video driver.
+(define-cproc sdl-vide-driver-name () :: <const-cstring>
+  (let* ([name :: (.array char (129))])
+    (SDL_VideoDriverName name 128)
+    (result name)))
+
+;;;;;
+;; This function returns a pointer to the current display surface.
+;; If SDL is doing format conversion on the display surface, this
+;; function returns the publicly visible surface, not the real video surface.
+(define-cproc sdl-get-video-surface () ::<sdl-surface>
+  (result (SDL_GetVideoSurface)))
+
+;;;;;
+;; This function returns a read-only pointer to information about the
+;; video hardware.  If this is called before SDL_SetVideoMode(), the 'vfmt'
+;; member of the returned structure will contain the pixel format of the
+;; "best" video mode.
+(define-cproc sdl-get-video-info () :: <sdl-video-info>
+  (result (cast SDL_VideoInfo* (SDL_GetVideoInfo))))
+
+;;;;;
+;; Check to see if a particular video mode is supported.
+;; It returns #f if the requested mode is not supported under any bit depth,
+;; or returns the bits-per-pixel of the closest available mode with the
+;; given width and height.  If this bits-per-pixel is different from the
+;; one used when setting the video mode, sdl-set-video-mode will succeed,
+;; but will emulate the requested bits-per-pixel with a shadow surface.
+;;
+;; The arguments to sdl-video-mode-ok are the same ones you would pass to sdl-set-video-mode
+(define-cproc sdl-video-mode-ok (width::<int> height::<int> bpp::<int> flags::<fixnum>) :: <boolean>
+  (result (SDL_VideoModeOK width height bpp flags)))
+
+;;;;;
+;; Return a pointer to an array of available screen dimensions for the
+;; given format and video flags, sorted largest to smallest.  Returns 
+;; #f if there are no dimensions available for a particular format, 
+;; or #t if any dimension is okay for the given format.
+;;
+;; If 'format' is #f, the mode list will be for the format given 
+;; by SDL_GetVideoInfo()->vfmt
+(define-cproc sdl-list-modes (format::<top> flags::<uint32>) :: <top>
+  (let* ([fmt::SDL_PixelFormat*]
+         [rect::SDL_Rect**])
+    (cond
+      [(is-type? format <sdl-pixel-format>)
+       (set! fmt (unboxing format <sdl-pixel-format>))]
+      [(is-type? format <boolean>)
+       (if (not (unboxing format <boolean>))
+         (set! fmt 0))]
+      [else (Scm_Error "<sdl-pixel-format> or #f required, but got %S." format)])
+    (set! rect (SDL_ListModes fmt flags))
+    (case (cast int rect)
+      [(0) (result (boxing 0 <boolean>))]
+      [(-1) (result (boxing 1 <boolean>))]
+      [else 
+        (let* ([i :: int]
+               [c :: ScmObj SCM_NIL])
+          (for ((= i 0) (aref rect i) (pre++ i)))
+          (for (() (!= i 0) (pre-- i))
+               (set! c (Scm_Cons (boxing (*(aref rect (- i 1))) <sdl-rect>) c)))
+          (result c))])))
+
+;;;;;
+;; Set up a video mode with the specified width, height and bits-per-pixel.
+;;
+;; If 'bpp' is 0, it is treated as the current display bits per pixel.
+;;
+;; If SDL_ANYFORMAT is set in 'flags', the SDL library will try to set the
+;; requested bits-per-pixel, but will return whatever video pixel format is
+;; available.  The default is to emulate the requested pixel format if it
+;; is not natively available.
+;;
+;; If SDL_HWSURFACE is set in 'flags', the video surface will be placed in
+;; video memory, if possible, and you may have to call SDL_LockSurface()
+;; in order to access the raw framebuffer.  Otherwise, the video surface
+;; will be created in system memory.
+;;
+;; If SDL_ASYNCBLIT is set in 'flags', SDL will try to perform rectangle
+;; updates asynchronously, but you must always lock before accessing pixels.
+;; SDL will wait for updates to complete before returning from the lock.
+;;
+;; If SDL_HWPALETTE is set in 'flags', the SDL library will guarantee
+;; that the colors set by SDL_SetColors() will be the colors you get.
+;; Otherwise, in 8-bit mode, SDL_SetColors() may not be able to set all
+;; of the colors exactly the way they are requested, and you should look
+;; at the video surface structure to determine the actual palette.
+;; If SDL cannot guarantee that the colors you request can be set, 
+;; i.e. if the colormap is shared, then the video surface may be created
+;; under emulation in system memory, overriding the SDL_HWSURFACE flag.
+;;
+;; If SDL_FULLSCREEN is set in 'flags', the SDL library will try to set
+;; a fullscreen video mode.  The default is to create a windowed mode
+;; if the current graphics system has a window manager.
+;; If the SDL library is able to set a fullscreen video mode, this flag 
+;; will be set in the surface that is returned.
+;;
+;; If SDL_DOUBLEBUF is set in 'flags', the SDL library will try to set up
+;; two surfaces in video memory and swap between them when you call 
+;; SDL_Flip().  This is usually slower than the normal single-buffering
+;; scheme, but prevents "tearing" artifacts caused by modifying video 
+;; memory while the monitor is refreshing.  It should only be used by 
+;; applications that redraw the entire screen on every update.
+;;
+;; If SDL_RESIZABLE is set in 'flags', the SDL library will allow the
+;; window manager, if any, to resize the window at runtime.  When this
+;; occurs, SDL will send a SDL_VIDEORESIZE event to you application,
+;; and you must respond to the event by re-calling SDL_SetVideoMode()
+;; with the requested size (or another size that suits the application).
+;;
+;; If SDL_NOFRAME is set in 'flags', the SDL library will create a window
+;; without any title bar or frame decoration.  Fullscreen video modes have
+;; this flag set automatically.
+;;
+;; This function returns the video framebuffer surface, or NULL if it fails.
+;;
+;; If you rely on functionality provided by certain video flags, check the
+;; flags of the returned surface to make sure that functionality is available.
+;; SDL will fall back to reduced functionality if the exact flags you wanted
+;; are not available.
+(define-cproc sdl-set-video-mode (width::<int> height::<int> bpp::<int> flag::<uint32>) :: <sdl-surface>
+  (result (SDL_SetVideoMode width height bpp flag)))
+
+(eval-in-current-module
+  (gen-elem-assign <sdl-rect>)
+  )
+;;;;;
+;; These functions should not be called while 'screen' is locked.
+;; Makes sure the given list of rectangles is updated on the given screen.
+(define-cproc sdl-update-rects (screen::<sdl-surface> rects::<top>) :: <void>
+  (let* ([size::int]
+         [p-rects::SDL_Rect*]
+         [tmp-ary :: (.array SDL_Rect (TMP_ARY_SIZE))])
+    (cond
+      [(is-type? rects <vector>)
+       (set! size (SCM_VECTOR_SIZE rects))
+       (vector-to-ary rects p-rects tmp-ary TMP_ARY_SIZE SDL_Rect <sdl-rect>-elem-assign)]
+      [(is-type? rects <list>)
+       (list-to-ary rects p-rects tmp-ary TMP_ARY_SIZE size SDL_Rect <sdl-rect>-elem-assign)]
+      [(is-type? rects <sdl-rect>)
+       (set! size 1)
+       (set! (aref tmp-ary 0) (unboxing rects <sdl-rect>))
+       (set! p-rects tmp-ary)]
+      [else (Scm_Error "rects is <vector> or <list> or <sdl-rect> required, but got %S." rects)])
+    (SDL_UpdateRects screen size p-rects)))
+
+;;;;;
+;; These functions should not be called while 'screen' is locked.
+;; If 'x', 'y', 'w' and 'h' are all 0, sdl-update-rect will update the entire screen.
+(define-cproc sdl-update-rect (screen::<sdl-surface> x::<int32> y::<int32> w::<uint32> h::<uint32>) :: <void>
+  (SDL_UpdateRect screen x y w h))
+
+;;;;;
+;; On hardware that supports double-buffering, this function sets up a flip
+;; and returns.  The hardware will wait for vertical retrace, and then swap
+;; video buffers before the next video surface blit or lock will return.
+;; On hardware that doesn not support double-buffering, this is equivalent
+;; to calling (sdl-update-rect screen 0 0 0 0).
+;; The SDL_DOUBLEBUF flag must have been passed to SDL_SetVideoMode() when
+;; setting the video mode for this function to perform hardware flipping.
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-flip (screen::<sdl-surface>) :: <void>
+  (unless (zero? (SDL_Flip screen))
+    (raise-sdl-error sdl-flip)))
+
+;;;;;
+;; Set the gamma correction for each of the color channels.
+;; The gamma values range (approximately) between 0.1 and 10.0
+;; 
+;; If this function isn't supported directly by the hardware, it will
+;; be emulated using gamma ramps, if available. 
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-set-gamma (red::<float> green::<float> blue::<float>) :: <void>
+  (unless (zero? (SDL_SetGamma red green blue))
+    (raise-sdl-error sdl-set-gamma)))
+
+;;;;;
+;; Set the gamma translation table for the red, green, and blue channels
+;; of the video hardware.  Each table is an array of 256 16-bit quantities,
+;; representing a mapping between the input and output for that channel.
+;; The input is the index into the array, and the output is the 16-bit
+;; gamma value at that index, scaled to the output color precision.
+;; 
+;; You may pass '() for any of the channels to leave it unchanged.
+;; If the display driver or hardware does not support gamma translation, or otherwise fails,
+;; this function will raise <sdl-error>.
+(define-cproc sdl-set-gamma-ramp (redtable::<top> greentable::<top> bluetable::<top>) :: <void>
+  (let* ([red :: Uint16*]
+         [green :: Uint16*]
+         [blue :: Uint16*])
+    (cond
+      [(is-type? redtable <u16vector>)
+       (if (!= 256 (SCM_U16VECTOR_SIZE redtable))
+         (Scm_Error "redtable size of 256 required, but got %S." redtable))
+       (set! red (SCM_U16VECTOR_ELEMENTS redtable))]
+      [(== SCM_NIL redtable)
+       (set! red 0)])
+    (cond
+      [(is-type? greentable <u16vector>)
+       (if (!= 256 (SCM_U16VECTOR_SIZE greentable))
+         (Scm_Error "greentable size of 256 required, but got %S." greentable))
+       (set! green (SCM_U16VECTOR_ELEMENTS greentable))]
+      [(== SCM_NIL greentable)
+       (set! green 0)])
+    (cond
+      [(is-type? bluetable <u16vector>)
+       (if (!= 256 (SCM_U16VECTOR_SIZE bluetable))
+         (Scm_Error "bluetable size of 256 required, but got %S." bluetable))
+       (set! blue (SCM_U16VECTOR_ELEMENTS bluetable))]
+      [(== SCM_NIL bluetable)
+       (set! blue 0)])
+    (unless (zero? (SDL_SetGammaRamp red green blue))
+      (raise-sdl-error sdl-set-gamma-ramp))))
+
+;;;;;
+;; Retrieve the current values of the gamma translation tables.
+;; 
+;; You must pass in valid pointers to arrays of 256 16-bit quantities.
+;; Any of the pointers may be '() to ignore that channel.
+;; If the display driver or hardware does not support gamma translation, or otherwise fails,
+;; this function will raise <sdl-error>.
+(define-cproc sdl-get-gamma-ramp (redtable::<top> greentable::<top> bluetable::<top>) :: <void>
+  (let* ([red :: Uint16*]
+         [green :: Uint16*]
+         [blue :: Uint16*])
+    (cond
+      [(is-type? redtable <u16vector>)
+       (if (!= 256 (SCM_U16VECTOR_SIZE redtable))
+         (Scm_Error "redtable size of 256 required, but got %S." redtable))
+       (set! red (SCM_U16VECTOR_ELEMENTS redtable))]
+      [(== SCM_NIL redtable)
+       (set! red 0)])
+    (cond
+      [(is-type? greentable <u16vector>)
+       (if (!= 256 (SCM_U16VECTOR_SIZE greentable))
+         (Scm_Error "greentable size of 256 required, but got %S." greentable))
+       (set! green (SCM_U16VECTOR_ELEMENTS greentable))]
+      [(== SCM_NIL greentable)
+       (set! green 0)])
+    (cond
+      [(is-type? bluetable <u16vector>)
+       (if (!= 256 (SCM_U16VECTOR_SIZE bluetable))
+         (Scm_Error "bluetable size of 256 required, but got %S." bluetable))
+       (set! blue (SCM_U16VECTOR_ELEMENTS bluetable))]
+      [(== SCM_NIL bluetable)
+       (set! blue 0)])
+    (unless (zero? (SDL_GetGammaRamp red green blue))
+      (raise-sdl-error sdl-get-gamma-ramp))))
+
+(eval-in-current-module
+  (gen-elem-assign <sdl-color>)
+  )
+;;;;;
+;; Sets a portion of the colormap for the given 8-bit surface.  If 'surface'
+;; is not a palettized surface, this function does nothing, returning #f.
+;; If all of the colors were set as passed to sdl-set-colors, it will
+;; return #t.  If not all the color entries were set exactly as given,
+;; it will return #f, and you should look at the surface palette to
+;; determine the actual color palette.
+;;
+;; When 'surface' is the surface associated with the current display, the
+;; display colormap will be updated with the requested colors.  If 
+;; SDL_HWPALETTE was set in sdl-set-video-mode flags, sdl-set-colors
+;; will always return #t, and the palette is guaranteed to be set the way
+;; you desire, even if the window colormap has to be warped or run under
+;; emulation.
+(define-cproc sdl-set-colors (surface::<sdl-surface> colors::<top> firstcolor::<int> ncolors::<int>) :: <boolean>
+  (let* ([size :: int]
+         [p-colors :: SDL_Color*]
+         [tmp-ary :: (.array SDL_Color (256))])
+    (cond
+      [(is-type? colors <vector>)
+       (set! size (SCM_VECTOR_SIZE colors))
+       (vector-to-ary colors p-colors tmp-ary 256 SDL_Color <sdl-color>-elem-assign)]
+      [(is-type? colors <list>)
+       (list-to-ary colors p-colors tmp-ary 256 SDL_Color <sdl-color>-elem-assign)]
+      [else (Scm_Error "colors is <vector> or <list> required, but got %S." colors)])
+    (result (SDL_SetColors surface p-colors firstcolor ncolors))))
+
+;;;;;
+;; Sets a portion of the colormap for a given 8-bit surface.
+;; 'flags' is one or both of:
+;; SDL_LOGPAL  -- set logical palette, which controls how blits are mapped
+;;                to/from the surface,
+;; SDL_PHYSPAL -- set physical palette, which controls how pixels look on
+;;                the screen
+;; Only screens have physical palettes. Separate change of physical/logical
+;; palettes is only possible if the screen has SDL_HWPALETTE set.
+;;
+;; No raise <sdl-error> if all colours could be set as requested.
+;;
+;; sdl-set-colors is equivalent to calling this function with
+;;     flags = (SDL_LOGPAL|SDL_PHYSPAL).
+(define-cproc sdl-set-palette (surface::<sdl-surface> flags::<int> colors::<top> firstcolor::<int> ncolors::<int>) :: <void>
+  (let* ([size :: int]
+         [p-colors :: SDL_Color*]
+         [tmp-ary :: (.array SDL_Color (256))])
+    (cond
+      [(is-type? colors <vector>)
+       (set! size (SCM_VECTOR_SIZE colors))
+       (vector-to-ary colors p-colors tmp-ary 256 SDL_Color <sdl-color>-elem-assign)]
+      [(is-type? colors <list>)
+       (list-to-ary colors p-colors tmp-ary 256 SDL_Color <sdl-color>-elem-assign)]
+      [else (Scm_Error "colors is <vector> or <list> required, but got %S." colors)])
+    (unless (zero? (SDL_SetPalette surface flags p-colors firstcolor ncolors))
+      (raise-sdl-error sdl-set-palette))))
+
+;;;;;
+;; Maps an RGB triple to an opaque pixel value for a given pixel format
+(define-cproc sdl-map-rgb (format::<sdl-pixel-format> r::<uint8> g::<uint8> b::<uint8>) :: <uint32>
+  (result (SDL_MapRGB format r g b)))
+
+;;;;;
+;; Maps an RGBA quadruple to a pixel value for a given pixel format
+(define-cproc sdl-map-rgba (format::<sdl-pixel-format> r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <uint32>
+  (result (SDL_MapRGBA format r g b a)))
+
+;;;;;
+;; Maps a pixel value into the RGB components for a given pixel format
+(define-cproc sdl-get-rgb (pixel::<uint32> format::<sdl-pixel-format>) :: (<uint8> <uint8> <uint8>)
+  (let* ([r :: Uint8]
+         [g :: Uint8]
+         [b :: Uint8])
+    (SDL_GetRGB pixel format (& r) (& g) (& b))
+    (result r g b)))
+
+;;;;;
+;; Maps a pixel value into the RGBA components for a given pixel format
+(define-cproc sdl-get-rgba (pixel::<uint32> format::<sdl-pixel-format>) :: (<uint8> <uint8> <uint8> <uint8>)
+  (let* ([r :: Uint8]
+         [g :: Uint8]
+         [b :: Uint8]
+         [a :: Uint8])
+    (SDL_GetRGBA pixel format (& r) (& g) (& b) (& a))
+    (result r g b a)))
+
+(define-cfn scm-finalize-sdl-surface (obj::ScmObj data::void*) :: void
+  (let* ([o :: ScmSDL_Surface* (SCM_SDL_SURFACE obj)])
+    (when (@ o->data)
+      (SDL_FreeSurface (@ o->data))
+      (set! (@ o->data) 0))))
+
+
+;;;;;
+;; Allocate and free an RGB surface (must be called after SDL_SetVideoMode)
+;; If the depth is 4 or 8 bits, an empty palette is allocated for the surface.
+;; If the depth is greater than 8 bits, the pixel format is set using the
+;; flags '[rgb]-mask'.
+;; If the function runs out of memory, it will return NULL.
+;;
+;; The 'flags' tell what kind of surface to create.
+;; SDL_SWSURFACE means that the surface should be created in system memory.
+;; SDL_HWSURFACE means that the surface should be created in video memory,
+;; with the same format as the display surface.  This is useful for surfaces
+;; that will not change much, to take advantage of hardware acceleration
+;; when being blitted to the display surface.
+;; SDL_ASYNCBLIT means that SDL will try to perform asynchronous blits with
+;; this surface, but you must always lock it before accessing the pixels.
+;; SDL will wait for current blits to finish before returning from the lock.
+;; SDL_SRCCOLORKEY indicates that the surface will be used for colorkey blits.
+;; If the hardware supports acceleration of colorkey blits between
+;; two surfaces in video memory, SDL will try to place the surface in
+;; video memory. If this isn't possible or if there is no hardware
+;; acceleration available, the surface will be placed in system memory.
+;; SDL_SRCALPHA means that the surface will be used for alpha blits and 
+;; if the hardware supports hardware acceleration of alpha blits between
+;; two surfaces in video memory, to place the surface in video memory
+;; if possible, otherwise it will be placed in system memory.
+;; If the surface is created in video memory, blits will be _much_ faster,
+;; but the surface format must be identical to the video surface format,
+;; and the only way to access the pixels member of the surface is to use
+;; the sdl-lock-surface and sdl-unlock-surface calls.
+;; If the requested surface actually resides in video memory, SDL_HWSURFACE
+;; will be set in the flags member of the returned surface.  If for some
+;; reason the surface could not be placed in video memory, it will not have
+;; the SDL_HWSURFACE flag set, and will be created in system memory instead.
+(define-cproc sdl-create-rgb-surface (flags::<uint32> width::<int> height::<int> depth::<int> 
+                                                      r-mask::<uint32> g-mask::<uint32> b-mask::<uint32> a-mask::<uint32>) :: <top>
+  (let* ([ret :: ScmObj (boxing 
+                          (SDL_CreateRGBSurface flags width height depth r-mask g-mask b-mask a-mask)
+                          <sdl-surface>)])
+    (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+    (result ret)))
+
+(define-cproc sdl-create-rgb-surface-from (pixels::<u8vector> width::<int> height::<int> depth::<int> pitch::<int>
+                                                              r-mask::<uint32> g-mask::<uint32> b-mask::<uint32> a-mask::<uint32>) :: <top>
+
+  (let* ([ret :: ScmObj (boxing 
+                          (SDL_CreateRGBSurfaceFrom (SCM_U8VECTOR_ELEMENTS pixels) width height depth pitch r-mask g-mask b-mask a-mask) 
+                          <sdl-surface>)])
+    (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+    (result ret)))
+
+(define-cproc sdl-free-surface (surface::<sdl-surface>) :: <void>
+  (when surface
+    (SDL_FreeSurface surface)
+    (set! (-> (SCM_SDL_SURFACE surface-scm) data) 0)))
+
+;;;;;
+;; sdl-lock-surface sets up a surface for directly accessing the pixels.
+;; Between calls to sdl-lock-surface/sdl-unlock-surface, you can write
+;; to and read from 'surface->pixels', using the pixel format stored in 
+;; 'surface->format'.  Once you are done accessing the surface, you should 
+;; use sdl-unlock-surface to release it.
+;;
+;; Not all surfaces require locking.  If SDL_MUSTLOCK(surface) evaluates
+;; to 0, then you can read and write to the surface at any time, and the
+;; pixel format of the surface will not change.  In particular, if the
+;; SDL_HWSURFACE flag is not given when calling sdl-set-video-mode, you
+;; will not need to lock the display surface before accessing it.
+;; 
+;; No operating system or library calls should be made between lock/unlock
+;; pairs, as critical system locks may be held during this time.
+;;
+;; sdl-lock-surface returns #t, or #f if the surface couldn't be locked.
+(define-cproc sdl-lock-surface (surface::<sdl-surface>) :: <boolean>
+  (ENSURE_NOT_NULL surface)
+  (result (<= 0 (SDL_LockSurface surface))))
+
+(define-cproc sdl-unlock-surface (surface::<sdl-surface>) :: <void>
+  (ENSURE_NOT_NULL surface)
+  (SDL_UnlockSurface surface))
+
+;;;;;
+;; Convenience macro -- load a surface from a file
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-load-bmp (file::<const-cstring>) :: <top>
+  (let* ([obj :: SDL_Surface* (SDL_LoadBMP file)])
+    (if (not obj)
+      (raise-sdl-error sdl-load-bmp)
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+;;;;;;
+;; Load a surface from a seekable SDL data source (memory or file.)
+;; If 'freesrc' is non-zero, the source will be closed after being read.
+;; Returns the new surface. 
+;; Raise <sdl-error> if there was an error.
+;; The new surface should be freed with sdl-free-surface.
+(define-cproc sdl-load-bmp-rw (src::<top> freesrc::<boolean>) :: <top>
+  (let* ([obj :: SDL_Surface*]
+         [src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (set! obj (SDL_LoadBMP_RW src-data freesrc))
+    (if (not obj)
+      (raise-sdl-error sdl-load-bmp-rw)
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+;;;;;
+;; Save a surface to a seekable SDL data source (memory or file.)
+;; If 'freedst' is #t, the source will be closed after being written.
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-save-bmp-rw (surface::<sdl-surface> dst::<top> freedst::<boolean>) :: <void>
+  (let* ([dst-data :: SDL_RWops*])
+    (set-ctx-data dst-data dst)
+    (ENSURE_NOT_NULL dst-data)
+    (ENSURE_NOT_NULL surface)
+    (unless (zero? (SDL_SaveBMP_RW  surface dst-data freedst))
+      (raise-sdl-error sdl-save-bmp-rw))))
+
+;;;;;
+;; Convenience macro -- save a surface to a file
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-save-bmp (surface::<sdl-surface> file::<const-cstring>) :: <void>
+  (ENSURE_NOT_NULL surface)
+  (unless (zero? (SDL_SaveBMP surface file)))
+    (raise-sdl-error sdl-save-bmp))
+
+;;;;;
+;; Sets the color key (transparent pixel) in a blittable surface.
+;; If 'flag' is SDL_SRCCOLORKEY (optionally OR'd with SDL_RLEACCEL), 
+;; 'key' will be the transparent pixel in the source image of a blit.
+;; SDL_RLEACCEL requests RLE acceleration for the surface if present,
+;; and removes RLE acceleration if absent.
+;; If 'flag' is 0, this function clears any current color key.
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-set-color-key (surface::<sdl-surface> flag::<uint32> key::<uint32>) :: <void>
+  (ENSURE_NOT_NULL surface)
+  (unless (zero? (SDL_SetColorKey surface flag key))
+    (raise-sdl-error sdl-set-color-key)))
+
+;;;;;
+;; This function sets the alpha value for the entire surface, as opposed to
+;; using the alpha component of each pixel. This value measures the range
+;; of transparency of the surface, 0 being completely transparent to 255
+;; being completely opaque. An 'alpha' value of 255 causes blits to be
+;; opaque, the source pixels copied to the destination (the default). Note
+;; that per-surface alpha can be combined with colorkey transparency.
+;;
+;; If 'flag' is 0, alpha blending is disabled for the surface.
+;; If 'flag' is SDL_SRCALPHA, alpha blending is enabled for the surface.
+;; OR:ing the flag with SDL_RLEACCEL requests RLE acceleration for the
+;; surface; if SDL_RLEACCEL is not specified, the RLE accel will be removed.
+;;
+;; The 'alpha' parameter is ignored for surfaces that have an alpha channel.
+(define-cproc sdl-set-alpha (surface::<sdl-surface> flag::<uint32> alpha::<uint8>) :: <void>
+  (ENSURE_NOT_NULL surface)
+  (unless (zero? (SDL_SetAlpha surface flag alpha))
+    (raise-sdl-error sdl-set-alpha)))
+
+;;;;;
+;; Sets the clipping rectangle for the destination surface in a blit.
+;;
+;; If the clip rectangle is NULL, clipping will be disabled.
+;; If the clip rectangle doesn't intersect the surface, the function will
+;; return #f and blits will be completely clipped.  Otherwise the
+;; function returns #t and blits to the surface will be clipped to
+;; the intersection of the surface area and the clipping rectangle.
+;;
+;; Note that blits are automatically clipped to the edges of the source
+;; and destination surfaces.
+(define-cproc sdl-set-clip-rect (surface::<sdl-surface> 
+                                 :optional (rect ())) :: <boolean>
+  (ENSURE_NOT_NULL surface)
+  (let* ([rect-data :: SDL_Rect*])
+    (cond 
+     [(false? rect) (set! rect-data 0)]
+     [(is-type? rect <sdl-rect>) (set! rect-data (& (unboxing rect <sdl-rect>)))]
+     [else (Scm_Error "<sdl-rect> required, but got %S." rect)])
+    (result (== SDL_TRUE (SDL_SetClipRect surface rect-data)))))
+
+;;;;;
+;; Gets the clipping rectangle for the destination surface in a blit.
+;; 'rect' must be a pointer to a valid rectangle which will be filled
+;; with the correct values.
+(define-cproc sdl-get-clip-rect (surface::<sdl-surface>) :: <sdl-rect>
+  (ENSURE_NOT_NULL surface)
+  (let* ([rect :: SDL_Rect])
+    (SDL_GetClipRect surface (& rect))
+    (result rect)))
+
+;;;;;
+;; Creates a new surface of the specified format, and then copies and maps 
+;; the given surface to it so the blit of the converted surface will be as 
+;; fast as possible.  If this function fails, it raise <sdl-error>.
+;;
+;; The 'flags' parameter is passed to sdl-create-rgb-surface and has those 
+;; semantics.  You can also pass SDL_RLEACCEL in the flags parameter and
+;; SDL will try to RLE accelerate colorkey and alpha blits in the resulting
+;; surface.
+;;
+;; This function is used internally by sdl-display-format.
+(define-cproc sdl-convert-surface (src::<sdl-surface> fmt::<sdl-pixel-format> flags::<uint32>) :: <top>
+  (ENSURE_NOT_NULL src)
+  (let* ([obj :: SDL_Surface* (SDL_ConvertSurface src fmt flags)])
+    (if (not obj)
+      (raise-sdl-error sdl-convert-surface)
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+;;;;;
+;; This performs a fast blit from the source surface to the destination
+;; surface.  It assumes that the source and destination rectangles are
+;; the same size.  If either 'srcrect' or 'dstrect' are #f, the entire
+;; surface (src or dst) is copied.  The final blit rectangles are saved
+;; in 'srcrect' and 'dstrect' after all clipping is performed.
+;;
+;; The blit function should not be called on a locked surface.
+;;
+;; The blit semantics for surfaces with and without alpha and colorkey
+;; are defined as follows:
+;;
+;; RGBA->RGB:
+;;     SDL_SRCALPHA set:
+;; 	alpha-blend (using alpha-channel).
+;; 	SDL_SRCCOLORKEY ignored.
+;;     SDL_SRCALPHA not set:
+;; 	copy RGB.
+;; 	if SDL_SRCCOLORKEY set, only copy the pixels matching the
+;; 	RGB values of the source colour key, ignoring alpha in the
+;; 	comparison.
+;; 
+;; RGB->RGBA:
+;;     SDL_SRCALPHA set:
+;; 	alpha-blend (using the source per-surface alpha value);
+;; 	set destination alpha to opaque.
+;;     SDL_SRCALPHA not set:
+;; 	copy RGB, set destination alpha to source per-surface alpha value.
+;;     both:
+;; 	if SDL_SRCCOLORKEY set, only copy the pixels matching the
+;; 	source colour key.
+;; 
+;; RGBA->RGBA:
+;;     SDL_SRCALPHA set:
+;; 	alpha-blend (using the source alpha channel) the RGB values;
+;; 	leave destination alpha untouched. [Note: is this correct?]
+;; 	SDL_SRCCOLORKEY ignored.
+;;     SDL_SRCALPHA not set:
+;; 	copy all of RGBA to the destination.
+;; 	if SDL_SRCCOLORKEY set, only copy the pixels matching the
+;; 	RGB values of the source colour key, ignoring alpha in the
+;; 	comparison.
+;; 
+;; RGB->RGB: 
+;;     SDL_SRCALPHA set:
+;; 	alpha-blend (using the source per-surface alpha value).
+;;     SDL_SRCALPHA not set:
+;; 	copy RGB.
+;;     both:
+;; 	if SDL_SRCCOLORKEY set, only copy the pixels matching the
+;; 	source colour key.
+;;
+;; If either of the surfaces were in video memory, and the blit returns -2,
+;; the video memory was lost, so it should be reloaded with artwork and 
+;; re-blitted:
+;; (At)code
+;;	while ( SDL_BlitSurface(image, imgrect, screen, dstrect) == -2 ) {
+;;		while ( SDL_LockSurface(image) < 0 )
+;;			Sleep(10);
+;;		-- Write image pixels to image->pixels --
+;;		SDL_UnlockSurface(image);
+;;	}
+;; (At)endcode
+;;
+;; This happens under DirectX 5.0 when the system switches away from your
+;; fullscreen application.  The lock will also fail until you have access
+;; to the video memory again.
+;;
+;; You should call sdl-blit-surface unless you know exactly how SDL
+;; blitting works internally and how to use the other blit functions.
+;;
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-blit-surface (src::<sdl-surface> srcrect::<top>
+                                                   dst::<sdl-surface> dstrect::<top>) :: <void>
+  (let* ([p-srcrect-data :: SDL_Rect*]
+         [p-dstrect-data :: SDL_Rect*])
+    (cond
+      [(false? srcrect) (set! p-srcrect-data 0)]
+      [(is-type? srcrect <sdl-rect>)
+        (set! p-srcrect-data (& (SCM_SDL_RECT_DATA srcrect)))]
+      [else (Scm_Error "<sdl-rect> required, but got %S." srcrect)])
+    (cond
+      [(false? dstrect) (set! p-dstrect-data 0)]
+      [(is-type? dstrect <sdl-rect>)
+        (set! p-dstrect-data (& (SCM_SDL_RECT_DATA dstrect)))]
+      [else (Scm_Error "<sdl-rect> required, but got %S." dstrect)])
+    (unless (zero? (SDL_BlitSurface src p-srcrect-data dst p-dstrect-data))
+      (raise-sdl-error sdl-blit-surface))))
+
+
+;;boolean or raise ?
+;;;;;
+;; This function performs a fast fill of the given rectangle with 'color'
+;; The given rectangle is clipped to the destination surface clip area
+;; and the final fill rectangle is saved in the passed in pointer.
+;; If 'dstrect' is #f, the whole surface will be filled with 'color'
+;; The color should be a pixel of the format used by the surface, and 
+;; can be generated by the sdl-map-rgb function.
+;; Raise <sdl-error> if there was an error.
+(define-cproc sdl-fill-rect (dst::<sdl-surface> dstrect::<top> color::<uint32>) :: <void>
+  (let* ([p-dstrect-data :: SDL_Rect*])
+    (cond
+      [(false? dstrect) (set! p-dstrect-data 0)]
+      [(is-type? dstrect <sdl-rect>)
+        (set! p-dstrect-data (& (SCM_SDL_RECT_DATA dstrect)))]
+      [else (Scm_Error "<sdl-rect> required, but got %S." dstrect)])
+    (unless (zero? (SDL_FillRect dst p-dstrect-data color))
+      (raise-sdl-error sdl-fill-rect))))
+
+;;;;;
+;; This function takes a surface and copies it to a new surface of the
+;; pixel format and colors of the video framebuffer, suitable for fast
+;; blitting onto the display surface.  It calls sdl-convert-surface
+;;
+;; If you want to take advantage of hardware colorkey or alpha blit
+;; acceleration, you should set the colorkey and alpha value before
+;; calling this function.
+;;
+;; If the conversion fails or runs out of memory, it raise <sdl-error>
+(define-cproc sdl-display-format (surface::<sdl-surface>) :: <top>
+  (ENSURE_NOT_NULL surface)
+  (let* ([obj :: SDL_Surface* (SDL_DisplayFormat surface)])
+    (if (not obj)
+      (raise-sdl-error sdl-display-format)
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+;;;;;
+;; This function takes a surface and copies it to a new surface of the
+;; pixel format and colors of the video framebuffer (if possible),
+;; suitable for fast alpha blitting onto the display surface.
+;; The new surface will always have an alpha channel.
+;;
+;; If you want to take advantage of hardware colorkey or alpha blit
+;; acceleration, you should set the colorkey and alpha value before
+;; calling this function.
+;;
+;; If the conversion fails or runs out of memory, it raise <sdl-error>
+(define-cproc sdl-display-format-alpha (surface::<sdl-surface>) :: <top>
+  (ENSURE_NOT_NULL surface)
+  (let* ([obj :: SDL_Surface* (SDL_DisplayFormatAlpha surface)])
+    (if (not obj)
+      (raise-sdl-error sdl-display-format-alpha)
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+;;;;;
+;; This function creates a video output overlay
+;; Calling the returned surface an overlay is something of a misnomer because
+;; the contents of the display surface underneath the area where the overlay
+;; is shown is undefined - it may be overwritten with the converted YUV data.
+(define-cproc sdl-create-yuv-overlay (width::<int> height::<int> format::<uint32> display::<sdl-surface>) :: <sdl-overlay>
+  (result (SDL_CreateYUVOverlay width height format display)))
+
+;;;;;
+;; Lock an overlay for direct access, and unlock it when you are done
+(define-cproc sdl-lock-yuv-overlay (overlay::<sdl-overlay>) :: <void>
+  (ENSURE_NOT_NULL overlay)
+  (unless (zero? (SDL_LockYUVOverlay overlay))
+    (raise-sdl-error sdl-lock-yuv-overlay)))
+
+(define-cproc sdl-unlock-yuv-overlay (overlay::<sdl-overlay>) :: <void>
+  (ENSURE_NOT_NULL overlay)
+  (SDL_UnlockYUVOverlay overlay))
+
+;;;;;
+;; Blit a video overlay to the display surface.
+;;  The contents of the video surface underneath the blit destination are
+;;  not defined.  
+;;  The width and height of the destination rectangle may be different from
+;;  that of the overlay, but currently only 2x scaling is supported.
+(define-cproc sdl-display-yuv-overlay (overlay::<sdl-overlay> dstrect::<top>) :: <void>
+  (ENSURE_NOT_NULL overlay)
+  (let* ([p-dstrect-data :: SDL_Rect*])
+    (cond
+      [(false? dstrect) (set! p-dstrect-data 0)]
+      [(is-type? dstrect <sdl-rect>)
+       (set! p-dstrect-data (& (SCM_SDL_RECT_DATA dstrect)))]
+      [else (Scm_Error "<sdl-rect> required, but got %S." dstrect)])
+    (unless (zero? (SDL_DisplayYUVOverlay overlay p-dstrect-data))
+      (raise-sdl-error sdl-display-yuv-overlay))))
+
+;;;;;
+;; Free a video overlay
+(define-cproc sdl-free-yuv-overlay (overlay::<sdl-overlay>) :: <void>
+  (when overlay
+    (SDL_FreeYUVOverlay overlay)
+    (set! (-> (SCM_SDL_OVERLAY overlay-scm) data) 0)))
+
+;;;;;
+;; Dynamically load an OpenGL library, or the default one if path is '()
+(define-cproc sdl-gl-load-library (path::<top>) :: <void>
+  (let* ([path-data :: (const char*)])
+    (nil-or-obj path path-data <const-cstring> 0)
+    (unless (zero? (SDL_GL_LoadLibrary path-data))
+      (raise-sdl-error sdl-gl-load-library))))
+
+;;not support SDL_GL_GetProcAddress
+
+;;;;;
+;; Set an attribute of the OpenGL subsystem before intialization.
+(define-cproc sdl-gl-set-attribute (attr::<fixnum> value::<int>) :: <void>
+  (unless (zero? (SDL_GL_SetAttribute attr value))
+    (raise-sdl-error sdl-gl-set-attribute)))
+
+;;;;;
+;; Get an attribute of the OpenGL subsystem from the windowing
+;; interface, such as glX. This is of course different from getting
+;; the values from SDL's internal OpenGL subsystem, which only
+;; stores the values you request before initialization.
+;;
+;; Developers should track the values they pass into SDL_GL_SetAttribute
+;; themselves if they want to retrieve these values.
+(define-cproc sdl-gl-get-attribute (attr::<fixnum>) :: <int>
+  (let* ([value :: int]
+         [ret :: int (SDL_GL_GetAttribute attr (& value))])
+    (unless (zero? ret)
+      (raise-sdl-error sdl-gl-get-attribute))
+    (result value)))
+
+;;;;;
+;; Swap the OpenGL buffers, if double-buffering is supported.
+(define-cproc sdl-gl-swap-buffers () :: <void>
+  (SDL_GL_SwapBuffers))
+
+;;;;;
+;; Sets the title and icon text of the display window (UTF-8 encoded)
+(define-cproc sdl-wm-set-caption (title::<const-cstring> icon::<top>) :: <void>
+  (let* ([icon-data :: (const char*)])
+    (cond
+      [(false? icon) (set! icon-data 0)]
+      [(is-type? icon <const-cstring>)
+       (set! icon-data (unboxing icon <const-cstring>))]
+      [else (Scm_Error "the 2nd arguments requires a <string> or #f, but got %S." icon)])
+    (SDL_WM_SetCaption title icon-data)))
+
+;;;;;
+;; Gets the title and icon text of the display window (UTF-8 encoded)
+(define-cproc sdl-wm-get-caption () :: (<const-cstring> <const-cstring>)
+  (let* ([title :: char*]
+         [icon :: char*])
+    (SDL_WM_GetCaption (& title) (& icon))
+    (result title icon)))
+
+;;;;;
+;; Sets the icon for the display window.
+;; This function must be called before the first call to sdl-set-video-mode.
+;; It takes an icon surface, and a mask in MSB format.
+;; If 'mask' is '(), the entire icon surface will be used as the icon.
+(define-cproc sdl-wm-set-icon (icon::<sdl-surface> mask::<top>) :: <void>
+  (ENSURE_NOT_NULL icon)
+  (let* ([mask-data :: Uint8*])
+    (cond
+      [(false? mask) (set! mask-data 0)]
+      [(is-type? mask <u8vector>)
+       (set! mask-data (SCM_U8VECTOR_ELEMENTS 
+                         (unboxing mask <u8vector>)))]
+      [else (Scm_Error "the 2nd arguments requires a <u8vector> or #f, but got %S" mask)])
+    (SDL_WM_SetIcon icon mask-data)))
+
+;;;;;
+;; This function iconifies the window, and returns #t if it succeeded.
+;; If the function succeeds, it generates an SDL_APPACTIVE loss event.
+;; This function is a noop and returns #f in non-windowed environments.
+(define-cproc sdl-wm-iconify-window () :: <boolean>
+  (result (not (zero? SDL_WM_IconifyWindow))))
+
+;;;;;
+;; Toggle fullscreen mode without changing the contents of the screen.
+;; If the display surface does not require locking before accessing
+;; the pixel information, then the memory pointers will not change.
+;;
+;; If this function was able to toggle fullscreen mode (change from 
+;; running in a window to fullscreen, or vice-versa), it will return #t.
+;; If it is not implemented, or fails, it returns #f.
+;;
+;; The next call to sdl-set-video-mode will set the mode fullscreen
+;; attribute based on the flags parameter - if SDL_FULLSCREEN is not
+;; set, then the display will be windowed by default where supported.
+;;
+;; This is currently only implemented in the X11 video driver.
+(define-cproc sdl-wm-toggle-full-screen (surface::<sdl-surface>) :: <void>
+  (ENSURE_NOT_NULL surface)
+  (when (zero? (SDL_WM_ToggleFullScreen surface))
+    (raise-sdl-error sdl-wm-toggle-full-screen)))
+
+(define-enum SDL_GRAB_QUERY)
+(define-enum SDL_GRAB_OFF)
+(define-enum SDL_GRAB_ON)
+
+;;;;;
+;; This function allows you to set and query the input grab state of
+;; the application.  It returns the new input grab state.
+;;
+;; Grabbing means that the mouse is confined to the application window,
+;; and nearly all keyboard input is passed directly to the application,
+;; and not interpreted by a window manager, if any.
+(define-cproc sdl-wm-grab-input (mode::<fixnum>) :: <fixnum>
+  (result (SDL_WM_GrabInput mode)))
+

@@ -1,0 +1,60 @@
+.PHONY: test clean install
+
+# General info
+SHELL       = @SHELL@
+prefix      = @prefix@
+exec_prefix = @exec_prefix@
+bindir      = @bindir@
+libdir      = @libdir@
+datadir     = @datadir@
+datarootdir = @datarootdir@
+srcdir      = @srcdir@
+VPATH       = $(srcdir)
+
+
+DESTDIR        =
+GOSH           = "@GOSH@"
+GAUCHE_CONFIG  = "@GAUCHE_CONFIG@"
+INSTALL        = "@GAUCHE_INSTALL@" -C
+
+GAUCHE_PKGLIBDIR  = "$(DESTDIR)@GAUCHE_PKGLIBDIR@"
+
+TARGET = sdl.scm
+
+STUBDIR=@STUBDIR@
+SCRIPTDIR=@SCRIPTDIR@
+GENDOC="@GENDOC@"
+
+SCMFILES = sdl.scm
+GENERATED = sdl.scm
+
+CONFIG_GENERATED = Makefile
+
+all : $(TARGET)
+	@cd sdl ; $(MAKE) all
+
+sdl.scm: $(STUBDIR)/sdl-lib.stub sdl.template
+	$(GOSH) -I$(SCRIPTDIR) $(GENDOC) -s $(STUBDIR)/sdl-lib.stub -t sdl.template -o sdl.scm
+
+test :
+
+install :
+	$(INSTALL) -m 444 -T $(GAUCHE_PKGLIBDIR) $(SCMFILES) 
+	@cd sdl ; $(MAKE) install
+
+uninstall :
+	$(INSTALL) -U $(GAUCHE_PKGLIBDIR) $(SCMFILES) 
+	@cd sdl ; $(MAKE) install
+
+clean :
+	rm -rf core *~ $(GENERATED)
+	@cd sdl ; $(MAKE) clean
+
+distclean : clean
+	rm -rf $(CONFIG_GENERATED)
+	@cd sdl ; $(MAKE) distclean
+
+realclean : clean
+	rm -rf $(CONFIG_GENERATED)
+	@cd sdl ; $(MAKE) realclean
+
