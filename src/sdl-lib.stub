@@ -2560,7 +2560,7 @@ static ScmVM* Scm_TimerVM;
 ;; The input is the index into the array, and the output is the 16-bit
 ;; gamma value at that index, scaled to the output color precision.
 ;; 
-;; You may pass '() for any of the channels to leave it unchanged.
+;; You may pass #f for any of the channels to leave it unchanged.
 ;; If the display driver or hardware does not support gamma translation, or otherwise fails,
 ;; this function will raise <sdl-error>.
 (define-cproc sdl-set-gamma-ramp (redtable::<top> greentable::<top> bluetable::<top>) :: <void>
@@ -2572,22 +2572,19 @@ static ScmVM* Scm_TimerVM;
        (if (!= 256 (SCM_U16VECTOR_SIZE redtable))
          (Scm_Error "redtable size of 256 required, but got %S." redtable))
        (set! red (SCM_U16VECTOR_ELEMENTS redtable))]
-      [(== SCM_NIL redtable)
-       (set! red 0)])
+      [(false? redtable) (set! red 0)])
     (cond
       [(is-type? greentable <u16vector>)
        (if (!= 256 (SCM_U16VECTOR_SIZE greentable))
          (Scm_Error "greentable size of 256 required, but got %S." greentable))
        (set! green (SCM_U16VECTOR_ELEMENTS greentable))]
-      [(== SCM_NIL greentable)
-       (set! green 0)])
+      [(false? greentable) (set! green 0)])
     (cond
       [(is-type? bluetable <u16vector>)
        (if (!= 256 (SCM_U16VECTOR_SIZE bluetable))
          (Scm_Error "bluetable size of 256 required, but got %S." bluetable))
        (set! blue (SCM_U16VECTOR_ELEMENTS bluetable))]
-      [(== SCM_NIL bluetable)
-       (set! blue 0)])
+      [(false? bluetable) (set! blue 0)])
     (unless (zero? (SDL_SetGammaRamp red green blue))
       (raise-sdl-error sdl-set-gamma-ramp))))
 
@@ -2595,7 +2592,7 @@ static ScmVM* Scm_TimerVM;
 ;; Retrieve the current values of the gamma translation tables.
 ;; 
 ;; You must pass in valid pointers to arrays of 256 16-bit quantities.
-;; Any of the pointers may be '() to ignore that channel.
+;; Any of the pointers may be #f to ignore that channel.
 ;; If the display driver or hardware does not support gamma translation, or otherwise fails,
 ;; this function will raise <sdl-error>.
 (define-cproc sdl-get-gamma-ramp (redtable::<top> greentable::<top> bluetable::<top>) :: <void>
@@ -2607,22 +2604,19 @@ static ScmVM* Scm_TimerVM;
        (if (!= 256 (SCM_U16VECTOR_SIZE redtable))
          (Scm_Error "redtable size of 256 required, but got %S." redtable))
        (set! red (SCM_U16VECTOR_ELEMENTS redtable))]
-      [(== SCM_NIL redtable)
-       (set! red 0)])
+      [(false? redtable) (set! red 0)])
     (cond
       [(is-type? greentable <u16vector>)
        (if (!= 256 (SCM_U16VECTOR_SIZE greentable))
          (Scm_Error "greentable size of 256 required, but got %S." greentable))
        (set! green (SCM_U16VECTOR_ELEMENTS greentable))]
-      [(== SCM_NIL greentable)
-       (set! green 0)])
+      [(false? greentable) (set! green 0)])
     (cond
       [(is-type? bluetable <u16vector>)
        (if (!= 256 (SCM_U16VECTOR_SIZE bluetable))
          (Scm_Error "bluetable size of 256 required, but got %S." bluetable))
        (set! blue (SCM_U16VECTOR_ELEMENTS bluetable))]
-      [(== SCM_NIL bluetable)
-       (set! blue 0)])
+      [(false? bluetable) (set! blue 0)])
     (unless (zero? (SDL_GetGammaRamp red green blue))
       (raise-sdl-error sdl-get-gamma-ramp))))
 
@@ -2893,7 +2887,7 @@ static ScmVM* Scm_TimerVM;
 ;; Note that blits are automatically clipped to the edges of the source
 ;; and destination surfaces.
 (define-cproc sdl-set-clip-rect (surface::<sdl-surface> 
-                                 :optional (rect ())) :: <boolean>
+                                 :optional (rect #f)) :: <boolean>
   (ENSURE_NOT_NULL surface)
   (let* ([rect-data :: SDL_Rect*])
     (cond 
