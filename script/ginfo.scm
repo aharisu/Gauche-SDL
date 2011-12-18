@@ -41,7 +41,8 @@
    ))
 
 (define (add-unit doc config unit)
-  (slot-set! doc 'units (cons unit (slot-ref doc 'units)))
+  (when unit
+    (slot-set! doc 'units (cons unit (slot-ref doc 'units))))
   unit)
 
 (define (commit-doc doc)

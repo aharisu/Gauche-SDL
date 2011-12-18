@@ -21,15 +21,6 @@
       (SDL_FreeSurface (@ o->data))
       (set! (@ o->data) 0))))
 
-(define-cise-stmt (set-ctx-data var obj)
-  `(cond
-     [(is-type? ,obj <sdl-rw-ops>)
-      (set! ,var (unboxing ,obj <sdl-rw-ops>))]
-     [(is-type? ,obj <sdl-rw-ops-user>)
-      (set! ,var (cast SDL_RWops* (unboxing ,obj <sdl-rw-ops-user>)))]
-     [else (Scm_Error "<sdl-rw-ops> required, but got %S." ,obj)]))
-
-
 ;;;;;
 ;; Load an image from an SDL data source.
 ;;

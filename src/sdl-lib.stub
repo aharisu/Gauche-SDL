@@ -546,7 +546,7 @@ static ScmVM* Scm_AudioVM;
 (define-cproc sdl-get-cd-track (cd::<sdl-cd> index::<int>) ::<sdl-cd-track>
   (result (aref (@ cd->track) index)))
 
-;(define-enum CD_FPS)
+(define-enum CD_FPS)
 (define-cproc sdl-frames-to-msf (frame::<int>) ::(<int> <int> <int>)
   (let* ([m::int]
          [s::int]
@@ -1004,7 +1004,7 @@ static ScmVM* Scm_AudioVM;
 ;; Returns an array of keystates, indexed by the SDLK_* syms.
 ;; Usage:
 ;; (let ((keystate (sdl-get-key-state)))
-;;   (if (not (zero? (u16vector-ref keystate SDLK_RETURN)))
+;;   (if (not (zero? (u8vector-ref keystate SDLK_RETURN)))
 ;;      ;;return is pressed))
 (define-cproc sdl-get-key-state () :: <u8vector>
   (let* ([numkeys::int]
@@ -2259,10 +2259,9 @@ static ScmVM* Scm_TimerVM;
            unvector vec = {obj->pixels, obj->pitch};
            return Scm_Makeunvector(vec);
            ")
-           (clip-rect :type <sdl-rect>
-                      :setter #f)
-           )
-   )
+  (clip-rect :type <sdl-rect>
+             :setter #f)
+  ))
 
 
 (define-enum SDL_SWSURFACE)
@@ -2757,7 +2756,6 @@ static ScmVM* Scm_TimerVM;
 
 (define-cproc sdl-create-rgb-surface-from (pixels::<u8vector> width::<int> height::<int> depth::<int> pitch::<int>
                                                               r-mask::<uint32> g-mask::<uint32> b-mask::<uint32> a-mask::<uint32>) :: <top>
-
   (let* ([ret :: ScmObj (boxing 
                           (SDL_CreateRGBSurfaceFrom (SCM_U8VECTOR_ELEMENTS pixels) width height depth pitch r-mask g-mask b-mask a-mask) 
                           <sdl-surface>)])
