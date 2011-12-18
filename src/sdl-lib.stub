@@ -158,25 +158,45 @@ do {\
 ;; the subsystems specified by 'flags' (and those satisfying dependencies)
 ;; Unless the SDL_INIT_NOPARACHUTE flag is set, it will install cleanup
 ;; signal handlers for some commonly ignored fatal signals (like SIGSEGV)
-(define-cproc sdl-init (flags::<uint>) ::<int>
-  (result (SDL_Init flags)))
+(define-cproc sdl-init (:rest flags) ::<int>
+  (let* ([flags-data :: Uint32 0])
+    (dolist [flag flags]
+      (if (is-type? flag <uint>)
+        (set! flags-data (logior flags-data (unboxing flag <uint>)))
+        (Scm_Error "C integer required, but got %S" flags)))
+    (result (SDL_Init flags-data))))
 
 ;;;;;
 ;; This function initializes specific SDL subsystems
-(define-cproc sdl-init-subsystem (flags::<uint>) ::<int>
-  (result (SDL_Init flags)))
+(define-cproc sdl-init-subsystem (:rest flags) ::<int>
+  (let* ([flags-data :: Uint32 0])
+    (dolist [flag flags]
+      (if (is-type? flag <uint>)
+        (set! flags-data (logior flags-data (unboxing flag <uint>)))
+        (Scm_Error "C integer required, but got %S" flags)))
+    (result (SDL_InitSubSystem flags-data))))
 
 ;;;;;
 ;; This function cleans up specific SDL subsystems
-(define-cproc sdl-quit-subsystem (flags::<uint>) ::<void>
-  (SDL_QuitSubSystem flags))
+(define-cproc sdl-quit-subsystem (:rest flags) ::<void>
+  (let* ([flags-data :: Uint32 0])
+    (dolist [flag flags]
+      (if (is-type? flag <uint>)
+        (set! flags-data (logior flags-data (unboxing flag <uint>)))
+        (Scm_Error "C integer required, but got %S" flags)))
+    (SDL_QuitSubSystem flags-data)))
 
 ;;;;;
 ;; This function returns mask of the specified subsystems which have
 ;; been initialized.
 ;; If 'flags' is 0, it returns a mask of all initialized subsystems.
-(define-cproc sdl-was-init(flags::<uint>) ::<int>
-  (result (SDL_WasInit flags)))
+(define-cproc sdl-was-init(:rest flags) ::<int>
+  (let* ([flags-data :: Uint32 0])
+    (dolist [flag flags]
+      (if (is-type? flag <uint>)
+        (set! flags-data (logior flags-data (unboxing flag <uint>)))
+        (Scm_Error "C integer required, but got %S" flags)))
+    (result (SDL_WasInit flags-data))))
 
 ;;;;;
 ;; This function cleans up all initialized subsystems and unloads the
@@ -999,8 +1019,13 @@ static ScmVM* Scm_AudioVM;
 ;;;;;
 ;; Set the current key modifier state.
 ;; This does not change the keyboard state, only the key modifier flags.
-(define-cproc sdl-set-mod-state (modstate::<fixnum>) :: <void>
-  (SDL_SetModState modstate))
+(define-cproc sdl-set-mod-state (:rest modstate) :: <void>
+  (let* ([modstate-data :: Uint32 0])
+    (dolist [state modstate]
+      (if (is-type? state <uint>)
+        (set! modstate-data (logior modstate-data (unboxing state <uint>)))
+        (Scm_Error "C integer required, but got %S" state)))
+    (SDL_SetModState modstate-data)))
 
 ;;;;;
 ;; Get the name of an SDL virtual keysym
@@ -2369,8 +2394,13 @@ static ScmVM* Scm_TimerVM;
 ;; but will emulate the requested bits-per-pixel with a shadow surface.
 ;;
 ;; The arguments to sdl-video-mode-ok are the same ones you would pass to sdl-set-video-mode
-(define-cproc sdl-video-mode-ok (width::<int> height::<int> bpp::<int> flags::<fixnum>) :: <boolean>
-  (result (SDL_VideoModeOK width height bpp flags)))
+(define-cproc sdl-video-mode-ok (width::<int> height::<int> bpp::<int> :rest flags) :: <boolean>
+  (let* ([flags-data :: Uint32 0])
+    (dolist [flag flags]
+      (if (is-type? flag <uint>)
+        (set! flags-data (logior flags-data (unboxing flag <uint>)))
+        (Scm_Error "C integer required, but got %S" flags)))
+    (result (SDL_VideoModeOK width height bpp flags-data))))
 
 ;;;;;
 ;; Return a pointer to an array of available screen dimensions for the
@@ -2380,17 +2410,20 @@ static ScmVM* Scm_TimerVM;
 ;;
 ;; If 'format' is #f, the mode list will be for the format given 
 ;; by SDL_GetVideoInfo()->vfmt
-(define-cproc sdl-list-modes (format::<top> flags::<uint32>) :: <top>
+(define-cproc sdl-list-modes (format::<top> :rest flags) :: <top>
   (let* ([fmt::SDL_PixelFormat*]
-         [rect::SDL_Rect**])
+         [rect::SDL_Rect**]
+         [flags-data :: Uint32 0])
     (cond
       [(is-type? format <sdl-pixel-format>)
        (set! fmt (unboxing format <sdl-pixel-format>))]
-      [(is-type? format <boolean>)
-       (if (not (unboxing format <boolean>))
-         (set! fmt 0))]
+      [(false? format) (set! fmt 0)]
       [else (Scm_Error "<sdl-pixel-format> or #f required, but got %S." format)])
-    (set! rect (SDL_ListModes fmt flags))
+    (dolist [flag flags]
+      (if (is-type? flag <uint>)
+        (set! flags-data (logior flags-data (unboxing flag <uint>)))
+        (Scm_Error "C integer required, but got %S" flags)))
+    (set! rect (SDL_ListModes fmt flags-data))
     (case (cast int rect)
       [(0) (result (boxing 0 <boolean>))]
       [(-1) (result (boxing 1 <boolean>))]
@@ -2459,8 +2492,13 @@ static ScmVM* Scm_TimerVM;
 ;; flags of the returned surface to make sure that functionality is available.
 ;; SDL will fall back to reduced functionality if the exact flags you wanted
 ;; are not available.
-(define-cproc sdl-set-video-mode (width::<int> height::<int> bpp::<int> flag::<uint32>) :: <sdl-surface>
-  (result (SDL_SetVideoMode width height bpp flag)))
+(define-cproc sdl-set-video-mode (width::<int> height::<int> bpp::<int> :rest flags) :: <sdl-surface>
+  (let* ([flags-data :: Uint32 0])
+    (dolist [flag flags]
+      (if (is-type? flag <uint>)
+        (set! flags-data (logior flags-data (unboxing flag <uint>)))
+        (Scm_Error "C integer required, but got %S" flags)))
+    (result (SDL_SetVideoMode width height bpp flags-data))))
 
 (eval-in-current-module
   (gen-elem-assign <sdl-rect>)
@@ -2885,14 +2923,19 @@ static ScmVM* Scm_TimerVM;
 ;; surface.
 ;;
 ;; This function is used internally by sdl-display-format.
-(define-cproc sdl-convert-surface (src::<sdl-surface> fmt::<sdl-pixel-format> flags::<uint32>) :: <top>
+(define-cproc sdl-convert-surface (src::<sdl-surface> fmt::<sdl-pixel-format> :rest flags) :: <top>
   (ENSURE_NOT_NULL src)
-  (let* ([obj :: SDL_Surface* (SDL_ConvertSurface src fmt flags)])
-    (if (not obj)
-      (raise-sdl-error sdl-convert-surface)
-      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
-        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
-        (result ret)))))
+  (let* ([flags-data :: Uint32 0])
+    (dolist [flag flags]
+      (if (is-type? flag <uint>)
+        (set! flags-data (logior flags-data (unboxing flag <uint>)))
+        (Scm_Error "C integer required, but got %S" flags)))
+    (let* ([obj :: SDL_Surface* (SDL_ConvertSurface src fmt flags-data)])
+      (if (not obj)
+        (raise-sdl-error sdl-convert-surface)
+        (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+          (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+          (result ret))))))
 
 ;;;;;
 ;; This performs a fast blit from the source surface to the destination

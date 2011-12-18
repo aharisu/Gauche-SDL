@@ -93,7 +93,8 @@
   (sdl-update-rect screen 0 0 0 0))
 
 (define (initialize)
-  (sdl-init (logior SDL_INIT_VIDEO SDL_INIT_TIMER))
+  ;(sdl-init (logior SDL_INIT_VIDEO SDL_INIT_TIMER))
+  (sdl-init SDL_INIT_VIDEO SDL_INIT_TIMER)
   (sdl-wm-set-caption "My SDL Sample Game-Particle-" #f)
   (set! screen (sdl-set-video-mode width height 32 SDL_SWSURFACE))
   (set! background-image (img-load "res/background.png"))

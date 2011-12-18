@@ -13,7 +13,8 @@
   (sdl-update-rect screen 0 0 0 0))
 
 (define (initialize)
-  (sdl-init (logior SDL_INIT_VIDEO SDL_INIT_TIMER))
+  ;(sdl-init (logior SDL_INIT_VIDEO SDL_INIT_TIMER))
+  (sdl-init SDL_INIT_VIDEO SDL_INIT_TIMER)
 
   (sdl-wm-set-caption "My SDL Sample Game" #f)
   (set! screen (sdl-set-video-mode 640 480 32 SDL_SWSURFACE))
