@@ -1,0 +1,16 @@
+;;;
+;;; ttf.scm - Gauche SDL_ttf binding
+;;;
+
+;;;;;
+;;@type cmd
+;;@@parse-relative #f
+
+(define-module sdl.ttf
+  (use sdl)
+  (export-all)
+  )
+(select-module sdl.ttf)
+
+(dynamic-load "gauche-sdl-ttf")
+

@@ -4,7 +4,7 @@ dnl  process this file with autoconf to generate 'configure'.
 dnl
 
 AC_PREREQ(2.54)
-AC_INIT(gauche-sdl, 1.0, foo.yobina@gmail.com)
+AC_INIT(gauche-sdl, 1.1, foo.yobina@gmail.com)
 dnl If you want to use the system name (OS, architecture, etc) in the
 dnl configure, uncomment the following line.  In such a case, you need
 dnl to copy config.guess and config.sub from automake distribution.
@@ -104,5 +104,5 @@ AC_MSG_NOTICE([creating ${PACKAGE_NAME}.gpd])
 
 dnl Output
 echo $PACKAGE_VERSION > VERSION
-AC_OUTPUT(Makefile src/Makefile src/image/Makefile lib/Makefile lib/sdl/Makefile)
+AC_OUTPUT(Makefile src/Makefile src/image/Makefile src/ttf/Makefile lib/Makefile lib/sdl/Makefile)
 
