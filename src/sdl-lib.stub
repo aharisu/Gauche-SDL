@@ -304,6 +304,7 @@ do {\
         unvector vec;
         vec.buf = obj->buf;
         vec.size = obj->len;
+        vec.type = TYPE_U8;
         return SCM_MAKE_UNVECTOR(vec);
         "
         :setter #f)
@@ -1318,6 +1319,9 @@ static ScmVM* Scm_AudioVM;
 (define-enum SDL_IGNORE)
 (define-enum SDL_DISABLE)
 (define-enum SDL_ENABLE)
+
+(define-enum SDL_PRESSED)
+(define-enum SDL_RELEASED)
 
 ;;;;;
 ;; @slot type kind of event type
