@@ -1,0 +1,991 @@
+
+"
+#include \"gauche-sdl-mixer.h\"
+#include \"../sdl_type.gen.h\"
+#include \"mixer_type.gen.h\"
+#include <SDL/SDL_mutex.h>
+"
+
+(include "mixer_type.gen.stub.header")
+(include "../sdl_type.gen.stub.header")
+(include "../macro.stub.header")
+
+"
+#define TYPE_U8 1
+#define TYPE_U16 2
+#define TYPE_U32 4
+#define SET_UNVECTOR_DATA(obj, v_buf, v_type, v_size) \
+do {\
+  SCM_UNVECTOR_DATA(obj).buf = (v_buf); \
+  SCM_UNVECTOR_DATA(obj).size = (v_size);  \
+  SCM_UNVECTOR_DATA(obj).type  = (v_type);  \
+}while(0)
+"
+
+(define-cise-stmt (set-ctx-data var obj)
+  `(cond
+     [(is-type? ,obj <sdl-rw-ops>)
+      (set! ,var (unboxing ,obj <sdl-rw-ops>))]
+     [(is-type? ,obj <sdl-rw-ops-user>)
+      (set! ,var (cast SDL_RWops* (unboxing ,obj <sdl-rw-ops-user>)))]
+     [else (Scm_Error "<sdl-rw-ops> required, but got %S." ,obj)]))
+
+(define-cfn scm-finalize-sdl-surface (obj::ScmObj data::void*) :: void
+  (let* ([o :: ScmSDL_Surface* (SCM_SDL_SURFACE obj)])
+    (when (@ o->data)
+      (SDL_FreeSurface (@ o->data))
+      (set! (@ o->data) 0))))
+
+(define-cise-stmt raise-mixer-error 
+  [(_ func-name)
+    `(Scm_RaiseCondition
+      (SCM_OBJ SCM_CLASS_SDL_ERROR)
+       SCM_RAISE_CONDITION_MESSAGE
+        "%s: %s"
+         ,(symbol->string func-name) (Mix_GetError))])
+
+(define-enum MIX_CHANNELS)
+(define-enum MIX_DEFAULT_FREQUENCY)
+(define-enum MIX_DEFAULT_FORMAT)
+(define-enum MIX_DEFAULT_CHANNELS)
+(define-enum MIX_MAX_VOLUME)
+
+(define-enum MIX_NO_FADING)
+(define-enum MIX_FADING_OUT)
+(define-enum MIX_FADING_IN)
+
+(define-enum MUS_NONE)
+(define-enum MUS_CMD)
+(define-enum MUS_WAV)
+(define-enum MUS_MOD)
+(define-enum MUS_MID)
+(define-enum MUS_OGG)
+(define-enum MUS_MP3)
+(define-enum MUS_MP3_MAD)
+
+(define-cclass  <mix-chunk>
+  :built-in
+  "ScmMix_Chunk*" "Scm_Mix_ChunkClass"
+  ()
+  (
+   (volume :type <uint8>)
+   (abuf :type <unvector>
+         :getter "
+         unvector vec;
+         vec.buf = obj->abuf;
+         vec.size = obj->alen;
+         vec.type = 1;
+         return SCM_MAKE_UNVECTOR(vec);
+         "
+         :setter #f)
+   )
+  )
+
+;;;;;
+;; Open the mixer with a certain audio format
+(define-cproc mix-open-audio (frequency::<int> format::<uint16> channels::<int> chunksize::<int>) :: <void>
+  (unless (zero? (Mix_OpenAudio frequency format channels chunksize))
+    (raise-mixer-error mix-open-audio)))
+
+;;TODO max check numchans
+;;;;;
+;; Dynamically change the number of channels managed by the mixer.
+;; If decreasing the number of channels, the upper channels are stopped.
+;; This function returns the new number of allocated channels.
+(define-cproc mix-allocate-channels (numchans::<int>)
+  (unless (zero? (Mix_AllocateChannels numchans))
+    (raise-mixer-error mix-allocate-channels)))
+
+;;;;;
+;; Find out what the actual audio device parameters are.
+;; Raise <sdl-error> on error.
+(define-cproc mix-query-spec () :: (<int> <uint16> <int>)
+  (let* ([freq :: int]
+         [format :: Uint16]
+         [channels :: int])
+    (if (Mix_QuerySpec (& freq) (& format) (& channels))
+      (result freq format channels)
+      (raise-mixer-error mix-query-spec))))
+
+;;;;;
+;; Load a wave file or a music (.mod .s3m .it .xm) file
+(define-cproc mix-load-wav-rw (src::<top>) :: <mix-chunk>
+  (let* ([src-data :: SDL_RWops*])
+    (set-ctx-data src-data src)
+    (ENSURE_NOT_NULL src-data)
+    (let* ([ret :: Mix_Chunk* (Mix_LoadWAV_RW src-data 0)])
+      (if (zero? ret)
+        (raise-mixer-error mix-load-wav-rw)
+        (result ret)))))
+
+;;;;;
+;; Load a wave file or a music (.mod .s3m .it .xm) file
+(define-cproc mix-load-wav (file::<const-cstring>) :: <mix-chunk>
+  (let* ([ret :: Mix_Chunk* (Mix_LoadWAV file)])
+    (if (zero? ret)
+      (raise-mixer-error mix-load-wav)
+      (result ret))))
+
+(define-cproc mix-load-mus (file::<const-cstring>) :: <mix-music>
+  (let* ([ret :: Mix_Music* (Mix_LoadMUS file)])
+    (if (zero? ret)
+      (raise-mixer-error mix-load-mus)
+      (result ret))))
+
+;;;;;
+;; Load a music file from an SDL_RWop object (Ogg and MikMod specific currently)
+;; Matt Campbell (matt@campbellhome.dhs.org) April 2000
+(define-cproc mix-load-mus-rw (rw::<top>) :: <mix-music>
+  (let* ([rw-data :: SDL_RWops*])
+    (set-ctx-data rw-data rw)
+    (ENSURE_NOT_NULL rw-data)
+    (let* ([ret :: Mix_Music* (Mix_LoadMUS_RW rw-data)])
+      (if (zero? ret)
+        (raise-mixer-error mix-load-mus-rw)
+        (result ret)))))
+
+;;;;;
+;; Load a wave file of the mixer format from a memory buffer
+(define-cproc mix-quick-load-wav (mem::<u8vector>) :: <mix-chunk>
+  (let* ([ret :: Mix_Chunk* (Mix_QuickLoad_WAV (SCM_U8VECTOR_ELEMENTS mem))])
+    (if (zero? ret)
+      (raise-mixer-error mix-quick-load-wav)
+      (result ret))))
+
+;;;;;
+;; Load raw audio data of the mixer format from a memory buffer
+(define-cproc mix-quick-load-raw (mem::<u8vector> len::<uint32>) :: <mix-chunk>
+  (let* ([ret :: Mix_Chunk* (Mix_QuickLoad_RAW (SCM_U8VECTOR_ELEMENTS mem) len)])
+    (if (zero? ret)
+      (raise-mixer-error mix-quick-load-raw)
+      (result ret))))
+
+;;;;;
+;; Free an audio chunk previously loaded
+(define-cproc mix-free-chunk (chunk::<mix-chunk>) :: <void>
+  (when chunk
+    (Mix_FreeChunk chunk)
+    (set! (SCM_MIX_CHUNK_DATA chunk_scm) 0)))
+
+(define-cproc mix-free-music (music::<mix-music>) :: <void>
+  (when music
+    (Mix_FreeMusic music)
+    (set! (-> (SCM_FOREIGN_POINTER music_scm) ptr) 0)))
+
+;;;;;
+;; Find out the music format of a mixer music, or the currently playing
+;; music, if 'music' is #f.
+(define-cproc mix-get-music-type (music::<top>) :: <fixnum>
+  (let* ([music-data :: Mix_Music*])
+    (cond
+      [(false? music) (set! music-data 0)]
+      [(is-type? music <mix-music>)
+        (set! music_data (unboxing music <mix-music>))]
+      [else (Scm_Error "<mix-muxic> or #f required, but got %S" music)])
+    (result (Mix_GetMusicType music-data))))
+
+"
+extern ScmVM* Scm_AudioVM;
+
+static ScmObj post_mix_func;
+
+static ScmObj post_mix_arg;
+__attribute__((constructor))
+static void init_post_mix_arg()
+{
+  post_mix_arg = SCM_UNDEFINED;
+}
+
+static ScmObj post_mix_vec;
+__attribute__((constructor))
+static void init_post_mix_vec()
+{
+  unvector vec;
+  post_mix_vec = SCM_MAKE_UNVECTOR(vec);
+}
+"
+
+(define-cise-stmt (check-attach-vm)
+  '(unless (Scm_VM)
+    (Scm_AttachVM Scm_AudioVM)))
+
+(define-cise-stmt (check-create-vm)
+  '(unless Scm_AudioVM
+     (set! Scm_AudioVM (Scm_NewVM (Scm_VM) (boxing "audio" <const-cstring>)))))
+
+(define-cfn post-mix-callback (udata::void* stream::Uint8* len::int) :: void
+  (check-attach-vm)
+  (SET_UNVECTOR_DATA post-mix-vec stream TYPE_U8 len)
+  (if (== 1 (SCM_PROCEDURE_REQUIRED post-mix-func))
+    (Scm_ApplyRec1 (SCM_OBJ post-mix-func)
+                   post-mix-vec)
+    (Scm_ApplyRec2 (SCM_OBJ post-mix-func)
+                   post-mix-arg
+                   post-mix-vec)))
+
+;;;;;
+;; Add your own music player or additional mixer function.
+;; If 'mix_func' is #f, the default music player is re-enabled.
+(define-cproc mix-set-post-mix (mix-func::<top> :optional arg::<top>) :: <void>
+  (let* ([func :: ScmObj])
+    (cond
+      [(false? mix-func) (set! func 0)]
+      [(is-type? mix-func <closure>)
+        (check-func-require mix-func 2 arg)
+        (set! func (SCM_OBJ (unboxing mix-func <closure>)))]
+      [else (Scm_Error "<closure> or #f required, but got %S." mix-func)])
+     (check-create-vm)
+     (set! post-mix-func mix-func)
+     (set! post-mix-arg arg)
+     (Mix_HookMusic (?: func post-mix-callback 0) 0)))
+
+;;;;;
+;; Get a object to the user data for the current music hook
+(define-cproc mix-get-music-hook-data () :: <top>
+  (result post-mix-arg))
+
+"
+static ScmObj finished_mix_func;
+"
+(define-cfn finished-mix-callback () :: void
+  (check-attach-vm)
+  (Scm_ApplyRec0 (SCM_OBJ finished-mix-func)))
+
+;;;;;
+;; Add your own callback when the music has finished playing.
+;; This callback is only called if the music finishes naturally.
+;; @param music-finished If 'music-finished' is #f, the clear callback.
+(define-cproc mix-hook-music-finished (music-finished::<top>) :: <void>
+  (let* ([func :: ScmObj])
+    (cond
+      [(false? music-finished) (set! func 0)]
+      [(is-type? music-finished <closure>)
+        (check-func-require music-finished 0)
+        (set! func (SCM_OBJ (unboxing music-finished <closure>)))]
+      [else (Scm_Error "<closure> or #f required, but got %S." music-finished)])
+    (check-create-vm)
+    (set! finished-mix-func func)
+    (Mix_HookMusicFinished (?: func finished-mix-callback 0))))
+
+"
+static ScmObj finished_mix_channel_func;
+"
+(define-cfn finished-mix-channel-callback () :: void
+  (check-attach-vm)
+  (Scm_ApplyRec0 finished-mix-channel-func))
+
+;;;;;
+;; Add your own callback when a channel has finished playing. #f
+;; to disable callback. The callback may be called from the mixer's audio 
+;; callback or it could be called as a result of mix-halt-channel, etc.
+;; do not call sdl-lock-audio from this callback; you will either be 
+;; inside the audio callback, or SDL_mixer will explicitly lock the audio
+;; before calling your callback.
+(define-cproc mix-channel-finished (channel-finished::<top>) :: <void>
+  (let* ([func :: ScmObj])
+    (cond
+      [(false? channel-finished) (set! func 0)]
+      [(is-type? channel-finished <closure>)
+        (check-func-require channel-finished 0)
+        (set! func (SCM_OBJ (unboxing channel-finished <closure>)))]
+      [else (Scm_Error "<closure> or #f required, but got %S." channel-finished)])
+    (check-create-vm)
+    (set! finished_mix_channel_func func)
+    (Mix_ChannelFinished (?: func finished-mix-channel-callback 0))))
+
+(define-enum MIX_CHANNEL_POST)
+
+"
+typedef struct{
+  ScmObj vector;
+  ScmClosure* callback;
+  ScmClosure* done;
+  ScmObj userdata;
+  Mix_EffectFunc_t c_callback;
+  Mix_EffectDone_t c_done;
+  int used;
+}EffectData;
+
+#define NUM_EFFECT_CALLBACK 30
+static EffectData effect_data_slot[NUM_EFFECT_CALLBACK];
+static SDL_mutex* effect_data_lock;
+
+static void clear_effect_data(EffectData* data)
+{
+  SDL_LockMutex(effect_data_lock);
+  data->used = 0;
+  data->callback = 0;
+  data->done = 0;
+  data->userdata = 0;
+  SDL_UnlockMutex(effect_data_lock);
+}
+
+#define DEFINE_EFFECT_CALLBACK(num) \
+static void mix_effect_func_##num(int chan, void* stream, int len, void* u_data) \
+{\
+  EffectData* data = (EffectData*)u_data;\
+  if(!Scm_VM()) {\
+    Scm_AttachVM(Scm_AudioVM);\
+  }\
+\
+  SET_UNVECTOR_DATA(data->vector, stream, TYPE_U8, len);\
+  if(SCM_PROCEDURE_REQUIRED(data->callback) == 2) {\
+    Scm_ApplyRec2(SCM_OBJ(data->callback),\
+      Scm_MakeInteger(chan),\
+      data->vector);\
+  } else {\
+    Scm_ApplyRec3(SCM_OBJ(data->callback),\
+      Scm_MakeInteger(chan),\
+      data->vector,\
+      data->userdata);\
+  }\
+}\
+static void mix_effect_done_##num(int chan, void* u_data) \
+{\
+  EffectData* data = (EffectData*)u_data;\
+  ScmClosure* done = data->done;\
+  ScmObj userdata = data->userdata;\
+  if(!Scm_VM()) {\
+    Scm_AttachVM(Scm_AudioVM);\
+  }\
+\
+  clear_effect_data(data);\
+  if(done) {\
+    if(SCM_PROCEDURE_REQUIRED(done) == 1) {\
+      Scm_ApplyRec1(SCM_OBJ(done),\
+        Scm_MakeInteger(chan));\
+    } else {\
+      Scm_ApplyRec2(SCM_OBJ(done),\
+        Scm_MakeInteger(chan),\
+        userdata);\
+    }\
+  }\
+}
+DEFINE_EFFECT_CALLBACK(1)
+DEFINE_EFFECT_CALLBACK(2)
+DEFINE_EFFECT_CALLBACK(3)
+DEFINE_EFFECT_CALLBACK(4)
+DEFINE_EFFECT_CALLBACK(5)
+DEFINE_EFFECT_CALLBACK(6)
+DEFINE_EFFECT_CALLBACK(7)
+DEFINE_EFFECT_CALLBACK(8)
+DEFINE_EFFECT_CALLBACK(9)
+DEFINE_EFFECT_CALLBACK(10)
+DEFINE_EFFECT_CALLBACK(11)
+DEFINE_EFFECT_CALLBACK(12)
+DEFINE_EFFECT_CALLBACK(13)
+DEFINE_EFFECT_CALLBACK(14)
+DEFINE_EFFECT_CALLBACK(15)
+DEFINE_EFFECT_CALLBACK(16)
+DEFINE_EFFECT_CALLBACK(17)
+DEFINE_EFFECT_CALLBACK(18)
+DEFINE_EFFECT_CALLBACK(19)
+DEFINE_EFFECT_CALLBACK(20)
+DEFINE_EFFECT_CALLBACK(21)
+DEFINE_EFFECT_CALLBACK(22)
+DEFINE_EFFECT_CALLBACK(23)
+DEFINE_EFFECT_CALLBACK(24)
+DEFINE_EFFECT_CALLBACK(25)
+DEFINE_EFFECT_CALLBACK(26)
+DEFINE_EFFECT_CALLBACK(27)
+DEFINE_EFFECT_CALLBACK(28)
+DEFINE_EFFECT_CALLBACK(29)
+DEFINE_EFFECT_CALLBACK(30)
+
+__attribute__((constructor))
+static void init_effect_data()
+{
+  int i;
+  unvector vec;
+  effect_data_lock = SDL_CreateMutex();
+
+  effect_data_slot[0].c_callback = mix_effect_func_1;
+  effect_data_slot[1].c_callback = mix_effect_func_2;
+  effect_data_slot[2].c_callback = mix_effect_func_3;
+  effect_data_slot[3].c_callback = mix_effect_func_4;
+  effect_data_slot[4].c_callback = mix_effect_func_5;
+  effect_data_slot[5].c_callback = mix_effect_func_6;
+  effect_data_slot[6].c_callback = mix_effect_func_7;
+  effect_data_slot[7].c_callback = mix_effect_func_8;
+  effect_data_slot[8].c_callback = mix_effect_func_9;
+  effect_data_slot[9].c_callback = mix_effect_func_10;
+  effect_data_slot[10].c_callback = mix_effect_func_11;
+  effect_data_slot[11].c_callback = mix_effect_func_12;
+  effect_data_slot[12].c_callback = mix_effect_func_13;
+  effect_data_slot[13].c_callback = mix_effect_func_14;
+  effect_data_slot[14].c_callback = mix_effect_func_15;
+  effect_data_slot[15].c_callback = mix_effect_func_16;
+  effect_data_slot[16].c_callback = mix_effect_func_17;
+  effect_data_slot[17].c_callback = mix_effect_func_18;
+  effect_data_slot[18].c_callback = mix_effect_func_19;
+  effect_data_slot[19].c_callback = mix_effect_func_20;
+  effect_data_slot[20].c_callback = mix_effect_func_21;
+  effect_data_slot[21].c_callback = mix_effect_func_22;
+  effect_data_slot[22].c_callback = mix_effect_func_23;
+  effect_data_slot[23].c_callback = mix_effect_func_24;
+  effect_data_slot[24].c_callback = mix_effect_func_25;
+  effect_data_slot[25].c_callback = mix_effect_func_26;
+  effect_data_slot[26].c_callback = mix_effect_func_27;
+  effect_data_slot[27].c_callback = mix_effect_func_28;
+  effect_data_slot[28].c_callback = mix_effect_func_29;
+  effect_data_slot[29].c_callback = mix_effect_func_30;
+
+  effect_data_slot[0].c_done = mix_effect_done_1;
+  effect_data_slot[1].c_done = mix_effect_done_2;
+  effect_data_slot[2].c_done = mix_effect_done_3;
+  effect_data_slot[3].c_done = mix_effect_done_4;
+  effect_data_slot[4].c_done = mix_effect_done_5;
+  effect_data_slot[5].c_done = mix_effect_done_6;
+  effect_data_slot[6].c_done = mix_effect_done_7;
+  effect_data_slot[7].c_done = mix_effect_done_8;
+  effect_data_slot[8].c_done = mix_effect_done_9;
+  effect_data_slot[9].c_done = mix_effect_done_10;
+  effect_data_slot[10].c_done = mix_effect_done_11;
+  effect_data_slot[11].c_done = mix_effect_done_12;
+  effect_data_slot[12].c_done = mix_effect_done_13;
+  effect_data_slot[13].c_done = mix_effect_done_14;
+  effect_data_slot[14].c_done = mix_effect_done_15;
+  effect_data_slot[15].c_done = mix_effect_done_16;
+  effect_data_slot[16].c_done = mix_effect_done_17;
+  effect_data_slot[17].c_done = mix_effect_done_18;
+  effect_data_slot[18].c_done = mix_effect_done_19;
+  effect_data_slot[19].c_done = mix_effect_done_20;
+  effect_data_slot[20].c_done = mix_effect_done_21;
+  effect_data_slot[21].c_done = mix_effect_done_22;
+  effect_data_slot[22].c_done = mix_effect_done_23;
+  effect_data_slot[23].c_done = mix_effect_done_24;
+  effect_data_slot[24].c_done = mix_effect_done_25;
+  effect_data_slot[25].c_done = mix_effect_done_26;
+  effect_data_slot[26].c_done = mix_effect_done_27;
+  effect_data_slot[27].c_done = mix_effect_done_28;
+  effect_data_slot[28].c_done = mix_effect_done_29;
+  effect_data_slot[29].c_done = mix_effect_done_30;
+
+  for(i = 0;i < NUM_EFFECT_CALLBACK;++i) {
+    effect_data_slot[i].vector = SCM_MAKE_UNVECTOR(vec);
+  }
+}
+
+__attribute__((destructor))
+static void finalize_effect_data()
+{
+  SDL_DestroyMutex(effect_data_lock);
+}
+
+static EffectData* find_unuse_data(int* index)
+{
+  int i;
+  for(i = 0;i < NUM_EFFECT_CALLBACK;++i) {
+    if(!effect_data_slot[i].used) {
+      *index = i;
+      return &(effect_data_slot[i]);
+    }
+  }
+
+  return 0;
+}
+"
+
+;;;;;
+;; Register a special effect function. At mixing time, the channel data is
+;;  copied into a buffer and passed through each registered effect function.
+;;  After it passes through all the functions, it is mixed into the final
+;;  output stream. The copy to buffer is performed once, then each effect
+;;  function performs on the output of the previous effect. Understand that
+;;  this extra copy to a buffer is not performed if there are no effects
+;;  registered for a given chunk, which saves CPU cycles, and any given
+;;  effect will be extra cycles, too, so it is crucial that your code run
+;;  fast. Also note that the data that your function is given is in the
+;;  format of the sound device, and not the format you gave to Mix_OpenAudio(),
+;;  although they may in reality be the same. This is an unfortunate but
+;;  necessary speed concern. Use Mix_QuerySpec() to determine if you can
+;;  handle the data before you register your effect, and take appropriate
+;;  actions.
+;; You may also specify a callback (Mix_EffectDone_t) that is called when
+;;  the channel finishes playing. This gives you a more fine-grained control
+;;  than Mix_ChannelFinished(), in case you need to free effect-specific
+;;  resources, etc. If you don't need this, you can specify NULL.
+;; You may set the callbacks before or after calling Mix_PlayChannel().
+;; Things like Mix_SetPanning() are just internal special effect functions,
+;;  so if you are using that, you've already incurred the overhead of a copy
+;;  to a separate buffer, and that these effects will be in the queue with
+;;  any functions you've registered. The list of registered effects for a
+;;  channel is reset when a chunk finishes playing, so you need to explicitly
+;;  set them with each call to Mix_PlayChannel*().
+;; You may also register a special effect function that is to be run after
+;;  final mixing occurs. The rules for these callbacks are identical to those
+;;  in Mix_RegisterEffect, but they are run after all the channels and the
+;;  music have been mixed into a single stream, whereas channel-specific
+;;  effects run on a given channel before any other mixing occurs. These
+;;  global effect callbacks are call "posteffects". Posteffects only have
+;;  their Mix_EffectDone_t function called when they are unregistered (since
+;;  the main output stream is never "done" in the same sense as a channel).
+;;  You must unregister them manually when you've had enough. Your callback
+;;  will be told that the channel being mixed is (MIX_CHANNEL_POST) if the
+;;  processing is considered a posteffect.
+;;
+;; After all these effects have finished processing, the callback registered
+;;  through Mix_SetPostMix() runs, and then the stream goes to the audio
+;;  device. 
+;;
+;; DO NOT EVER call SDL_LockAudio() from your callback function!
+;;
+;; Raise <sdl-error> if error (no such channel).
+(define-cproc mix-register-effect (chan::<int> callback::<closure> 
+                                   :optional (done::<top> #f)
+                                   arg::<top>) :: <int>
+  (check-create-vm)
+  (let* ([done-data :: ScmClosure*])
+    ;;done
+    (cond
+      [(false? done) (set! done-data 0)]
+      [(is-type? done <closure>)
+        (check-func-require done 2 arg)
+       (set! done-data (unboxing done <closure>))]
+      [else (Scm_Error "<closure> or #f required, but got %S." done)])
+    ;; callback
+    (check-func-require callback 3 arg)
+    ;;register
+    (SDL_LockMutex effect_data_lock)
+    (let* ([index :: int]
+           [data :: EffectData* (find_unuse_data (& index))])
+      (unless data
+        (SDL_UnlockMutex effect_data_lock)
+        (Scm_Error "Exceeds the upper limit of the effect can be registered"))
+      (set! (@ data->used) 1)
+      (SDL_UnlockMutex effect_data_lock)
+      (set! (@ data->callback) callback)
+      (set! (@ data->done) done-data)
+      (set! (@ data->userdata) arg)
+      (if (Mix_RegisterEffect chan
+                              (@ data->c_callback)
+                              (@ data->c_done)
+                              data)
+        (result index)
+        (begin
+         (SDL_LockMutex effect_data_lock)
+         (set! (@ data->used) 0)
+         (set! (@ data->callback) 0)
+         (set! (@ data->done) 0)
+         (set! (@ data->userdata) 0)
+         (SDL_UnlockMutex effect_data_lock)
+         (raise-mixer-error mix-register-effect))))))
+
+;;;;;
+;; You may not need to call this explicitly, unless you need to stop an
+;;  effect from processing in the middle of a chunk's playback.
+;; Posteffects are never implicitly unregistered as they are for channels,
+;;  but they may be explicitly unregistered through this function by
+;;  specifying MIX_CHANNEL_POST for a channel.
+;;
+;; Raise <sdl-error> if error (no such channel or effect).
+(define-cproc mix-unregister-effect (chan::<int> index::<int>) :: <void>
+  (when (or (< index 0) (>= index NUM_EFFECT_CALLBACK))
+    (Scm_Error "Invalid index."))
+  (let* ([data :: EffectData* (& (aref effect_data_slot index))])
+    (Mix_UnregisterEffect chan (@ data->c_callback))))
+      
+;;;;;
+;; You may not need to call this explicitly, unless you need to stop all
+;;  effects from processing in the middle of a chunk's playback. Note that
+;;  this will also shut off some internal effect processing, since
+;;  Mix_SetPanning() and others may use this API under the hood. This is
+;;  called internally when a channel completes playback.
+;; Posteffects are never implicitly unregistered as they are for channels,
+;;  but they may be explicitly unregistered through this function by
+;;  specifying MIX_CHANNEL_POST for a channel.
+;;
+;; Raise <sdl-error> if error (no such channel).
+(define-cproc mix-unregister-all-effects (chan::<int>) :: <void>
+  (unless (Mix_UnregisterAllEffects chan)
+    (raise-mixer-error mix-unregister-all-effects)))
+
+;;;;;
+;; Set the panning of a channel. The left and right channels are specified
+;;  as integers between 0 and 255, quietest to loudest, respectively.
+;;
+;; Technically, this is just individual volume control for a sample with
+;;  two (stereo) channels, so it can be used for more than just panning.
+;;  If you want real panning, call it like this:
+;;
+;;   Mix_SetPanning(channel, left, 255 - left);
+;;
+;; ...which isn't so hard.
+;;
+;; Setting (channel) to MIX_CHANNEL_POST registers this as a posteffect, and
+;;  the panning will be done to the final mixed stream before passing it on
+;;  to the audio device.
+;;
+;; This uses the Mix_RegisterEffect() API internally, and returns without
+;;  registering the effect function if the audio device is not configured
+;;  for stereo output. Setting both (left) and (right) to 255 causes this
+;;  effect to be unregistered, since that is the data's normal state.
+;;
+;;  Note that an audio device in mono mode is a no-op,
+;;  but this call will return successful in that case.
+;;
+;; Raise <sdl-error> if error (no such channel or mix-register-effect fails). 
+(define-cproc mix-set-panning (chan::<int> left::<uint8> right::<uint8>) :: <void> 
+  (unless (Mix_SetPanning chan left right)
+    (raise-mixer-error mix-set-panning)))
+
+;;;;;
+;; Set the position of a channel. (angle) is an integer from 0 to 360, that
+;;  specifies the location of the sound in relation to the listener. (angle)
+;;  will be reduced as neccesary (540 becomes 180 degrees, -100 becomes 260).
+;;  Angle 0 is due north, and rotates clockwise as the value increases.
+;;  For efficiency, the precision of this effect may be limited (angles 1
+;;  through 7 might all produce the same effect, 8 through 15 are equal, etc).
+;;  (distance) is an integer between 0 and 255 that specifies the space
+;;  between the sound and the listener. The larger the number, the further
+;;  away the sound is. Using 255 does not guarantee that the channel will be
+;;  culled from the mixing process or be completely silent. For efficiency,
+;;  the precision of this effect may be limited (distance 0 through 5 might
+;;  all produce the same effect, 6 through 10 are equal, etc). Setting (angle)
+;;  and (distance) to 0 unregisters this effect, since the data would be
+;;  unchanged.
+;;
+;; If you need more precise positional audio, consider using OpenAL for
+;;  spatialized effects instead of SDL_mixer. This is only meant to be a
+;;  basic effect for simple "3D" games.
+;;
+;; If the audio device is configured for mono output, then you won't get
+;;  any effectiveness from the angle; however, distance attenuation on the
+;;  channel will still occur. While this effect will function with stereo
+;;  voices, it makes more sense to use voices with only one channel of sound,
+;;  so when they are mixed through this effect, the positioning will sound
+;;  correct. You can convert them to mono through SDL before giving them to
+;;  the mixer in the first place if you like.
+;;
+;; Setting (channel) to MIX_CHANNEL_POST registers this as a posteffect, and
+;;  the positioning will be done to the final mixed stream before passing it
+;;  on to the audio device.
+;;
+;; This is a convenience wrapper over Mix_SetDistance() and Mix_SetPanning().
+;;
+;; Raise <sdl-error> if error (no such channel or mix-register-effect fails). 
+(define-cproc mix-set-position (chan::<int> angle::<int16> distance::<uint8>) :: <void>
+  (unless (Mix_SetPosition chan angle distance)
+    (raise-mixer-error mix-set-position)))
+
+;;;;;
+;; Set the "distance" of a channel. (distance) is an integer from 0 to 255
+;;  that specifies the location of the sound in relation to the listener.
+;;  Distance 0 is overlapping the listener, and 255 is as far away as possible
+;;  A distance of 255 does not guarantee silence; in such a case, you might
+;;  want to try changing the chunk's volume, or just cull the sample from the
+;;  mixing process with Mix_HaltChannel().
+;; For efficiency, the precision of this effect may be limited (distances 1
+;;  through 7 might all produce the same effect, 8 through 15 are equal, etc).
+;;  (distance) is an integer between 0 and 255 that specifies the space
+;;  between the sound and the listener. The larger the number, the further
+;;  away the sound is.
+;; Setting (distance) to 0 unregisters this effect, since the data would be
+;;  unchanged.
+;; If you need more precise positional audio, consider using OpenAL for
+;;  spatialized effects instead of SDL_mixer. This is only meant to be a
+;;  basic effect for simple "3D" games.
+;;
+;; Setting (channel) to MIX_CHANNEL_POST registers this as a posteffect, and
+;;  the distance attenuation will be done to the final mixed stream before
+;;  passing it on to the audio device.
+;;
+;; This uses the Mix_RegisterEffect() API internally.
+;;
+;; Raise <sdl-error> if error (no such channel or mix-register-effect fails). 
+(define-cproc mix-set-distance (chan::<int> distance::<uint8>) :: <void>
+  (unless (Mix_SetDistance chan distance)
+    (raise-mixer-error mix-set-distance)))
+
+;;;;;
+;; Causes a channel to reverse its stereo. This is handy if the user has his
+;;  speakers hooked up backwards, or you would like to have a minor bit of
+;;  psychedelia in your sound code.  :)  Calling this function with (flip)
+;;  set to non-zero reverses the chunks's usual channels. If (flip) is zero,
+;;  the effect is unregistered.
+;;
+;; This uses the Mix_RegisterEffect() API internally, and thus is probably
+;;  more CPU intensive than having the user just plug in his speakers
+;;  correctly. Mix_SetReverseStereo() returns without registering the effect
+;;  function if the audio device is not configured for stereo output.
+;;
+;; If you specify MIX_CHANNEL_POST for (channel), then this the effect is used
+;;  on the final mixed stream before sending it on to the audio device (a
+;;  posteffect).
+;;
+;;  Note that an audio device in mono mode is a no-op,
+;;  but this call will return successful in that case.
+;;
+;; Raise <sdl-error> if error (no such channel or mix-register-effect fails). 
+(define-cproc mix-set-reverse-stereo (chan::<int> flip::<boolean>) :: <void>
+  (unless (Mix_SetReverseStereo chan flip)
+    (raise-mixer-error mix-set-reverse-stereo)))
+
+;;;;;
+;; Reserve the first channels (0 -> n-1) for the application, i.e. don't allocate
+;; them dynamically to the next sample if requested with a -1 value below.
+;; Returns the number of reserved channels.
+(define-cproc mix-reserve-channels (num::<int>) :: <void>
+  (unless (Mix_ReserveChannels num)
+    (raise-mixer-error mix-reserve-channels)))
+
+;;;;;
+;; Attach a tag to a channel. A tag can be assigned to several mixer
+;; channels, to form groups of channels.
+;; If 'tag' is -1, the tag is removed (actually -1 is the tag used to
+;; represent the group of all the channels).
+(define-cproc mix-group-channel (which::<int> group-tag::<int>) :: <void>
+  (unless (Mix_GroupChannel which group-tag)
+    (raise-mixer-error mix-group-channel)))
+
+;;;;;
+;; Assign several consecutive channels to a group
+(define-cproc mix-group-channels (from::<int> to::<int> group-tag::<int>) :: <void>
+  (unless (Mix_GroupChannels from to group-tag)
+    (raise-mixer-error mix-group-channels)))
+
+;;;;;
+;; Finds the first available channel in a group of channels,
+;; returning -1 if none are available.
+(define-cproc mix-group-available (group-tag::<int>) :: <int>
+  (result (Mix_GroupAvailable group-tag)))
+
+;;;;;
+;; Returns the number of channels in a group.  is also a subtle
+;; way to get the total number of channels when 'tag' is -1
+(define-cproc mix-group-count (group-tag::<int>) :: <int>
+  (result (Mix_GroupCount group-tag)))
+
+;;;;;
+;; Finds the "oldest" sample playing in a group of channels
+(define-cproc mix-group-oldest (group-tag::<int>) :: <int>
+  (result (Mix_GroupOldest group-tag)))
+
+;;;;;
+;; Finds the "most recent" (i.e. last) sample playing in a group of channels
+(define-cproc mix-group-newer (group-tag::<int>) :: <int>
+  (result (Mix_GroupNewer group-tag)))
+
+;;;;;
+;; Play an audio chunk on a specific channel.
+;; @param use-chan If the specified channel is -1, play on the first free channel.
+;; @param loops If 'loops' is greater than zero, loop the sound that many times.
+;; If 'loops' is -1, loop inifinitely (~65000 times).
+;; @param ticks The same as above, but the sound is played at most 'ticks' milliseconds
+;; If 'ticks' is -1, no limit.
+;; @return  which channel was used to play the sound.
+(define-cproc mix-play-channel-timed (use-chan::<int> chunk::<mix-chunk> loops::<int> ticks::<int>) :: <int>
+  (ENSURE_NOT_NULL chunk)
+  (let* ([ret :: int (Mix_PlayChannelTimed use-chan chunk loops ticks)])
+    (if (== -1 ret)
+      (raise-mixer-error mix-play-channel-timed)
+      (result ret))))
+
+;;;;;
+;; Play an audio chunk on a specific channel.
+;; @param use-chan If the specified channel is -1, play on the first free channel.
+;; @param loops If 'loops' is greater than zero, loop the sound that many times.
+;; If 'loops' is -1, loop inifinitely (~65000 times).
+;; @return  which channel was used to play the sound.
+(define-cproc mix-play-channel (use-chan::<int> chunk::<mix-chunk> loops::<int>) :: <int>
+  (ENSURE_NOT_NULL chunk)
+  (let* ([ret :: int (Mix_PlayChannel use-chan chunk loops)])
+    (if (== -1 ret)
+      (raise-mixer-error mix-play-channel)
+      (result ret))))
+
+(define-cproc mix-play-music (music::<mix-music> loops::<int>) :: <void>
+  (ENSURE_NOT_NULL music)
+  (let* ([ret :: int (Mix_PlayMusic music loops)])
+    (if (== -1 ret)
+      (raise-mixer-error mix-play-music))))
+
+;;;;;
+;; Fade in music or a channel over "ms" milliseconds, same semantics as the "Play" functions
+(define-cproc mix-fade-in-music (music::<mix-music> loops::<int> ms::<int>) :: <void>
+  (ENSURE_NOT_NULL music)
+  (let* ([ret :: int (Mix_FadeInMusic music loops ms)])
+    (if (== -1 ret)
+      (raise-mixer-error mix-fade-in-music))))
+
+;;;;;
+;; Fade in music or a channel over "ms" milliseconds, same semantics as the "Play" functions
+(define-cproc mix-fade-in-music-pos (music::<mix-music> loops::<int> ms::<int> position::<real>) :: <void>
+  (ENSURE_NOT_NULL music)
+  (let* ([ret :: int (Mix_FadeInMusicPos music loops ms position)])
+    (if (== -1 ret)
+      (raise-mixer-error mix-fade-in-music-pos))))
+
+(define-cproc mix-fade-in-channel (use-chan::<int> chunk::<mix-chunk> loops::<int> ms::<int>) :: <int>
+  (ENSURE_NOT_NULL chunk)
+  (let* ([ret :: int (Mix_FadeInChannel use-chan chunk loops ms)])
+    (if (== -1 ret)
+      (raise-mixer-error mix-fade-in-channel)
+      (result ret))))
+
+(define-cproc mix-fade-in-channel-timed (use-chan::<int> chunk::<mix-chunk> loops::<int> ms::<int> ticks::<int>) :: <int>
+  (ENSURE_NOT_NULL chunk)
+  (let* ([ret :: int (Mix_FadeInChannelTimed use-chan chunk loops ms ticks)])
+    (if (== -1 ret)
+      (raise-mixer-error mix-fade-in-channel-timed)
+      (result ret))))
+
+;;;;;
+;; @param chan If the specified channel is -1, set volume for all channels.
+;; @param volume Set the volume in the range of 0-128 of a specific channel or chunk.
+;; If the specified volume is -1, just return the current volume.
+;; @return the original volume.
+(define-cproc mix-volume (chan::<int> volume::<int>) :: <int>
+  (result (Mix_Volume chan volume)))
+
+;;;;;
+;; @param volume Set the volume in the range of 0-128 of a specific channel or chunk.
+;; If the specified volume is -1, just return the current volume.
+;; @return the original volume.
+(define-cproc mix-volume-chunk (chunk::<mix-chunk> volume::<int>) :: <int>
+  (ENSURE_NOT_NULL chunk)
+  (result (Mix_VolumeChunk chunk volume)))
+
+;;;;;
+;; @param volume Set the volume in the range of 0-128 of a specific channel or chunk.
+;; If the specified volume is -1, just return the current volume.
+;; @return the original volume.
+(define-cproc mix-volume-music (volume::<int>) :: <int>
+  (result (Mix_VolumeMusic volume)))
+
+;;;;;
+;; @param chan If the specified 'chan' is -1, halt all channels.
+(define-cproc mix-halt-channel (chan::<int>) :: <void>
+  (Mix_HaltChannel chan))
+
+(define-cproc mix-halt-group (group-tag::<int>) :: <void>
+  (Mix_HaltGroup group-tag))
+
+(define-cproc mix-halt-music () :: <void>
+  (Mix_HaltMusic))
+
+;;;;;
+;; Change the expiration delay for a particular channel.
+;; The sample will stop playing after the 'ticks' milliseconds have elapsed,
+;; or remove the expiration if 'ticks' is -1
+;; @param chan If the specified 'chan' is -1, expire all channels.
+(define-cproc mix-expire-channel (chan::<int> ticks::<int>) :: <int>
+  (result (Mix_ExpireChannel chan ticks)))
+
+;;;;;
+;; Halt a channel, fading it out progressively till it's silent
+;; The ms parameter indicates the number of milliseconds the fading
+;; will take.
+;; @param chan If the specified 'chan' is -1, fade out all channels.
+(define-cproc mix-fade-out-channel (chan::<int> ms::<int>) :: <int>
+  (result (Mix_FadeOutChannel chan ms)))
+
+(define-cproc mix-fade-out-group (group-tag::<int> ms::<int>) :: <int>
+  (result (Mix_FadeOutGroup group-tag ms)))
+
+(define-cproc mix-fade-out-music (ms::<int>) :: <void>
+  (Mix_FadeOutMusic ms))
+
+;;;;;
+;; Query the fading status of a channel
+(define-cproc mix-fading-music () :: <fixnum>
+  (result (Mix_FadingMusic)))
+
+;;;;;
+;; Query the fading status of a channel
+(define-cproc mix-fading-channel (chan::<int>) :: <fixnum>
+  (result (Mix_FadingChannel chan)))
+
+;;;;;
+;; @param chan If the specified 'chan' is -1, pause all channels.
+(define-cproc mix-pause (chan::<int>) :: <void>
+  (Mix_Pause chan))
+
+;;;;;
+;; @param chan If the specified 'chan' is -1, resume all channels.
+(define-cproc mix-resume (chan::<int>) :: <void>
+  (Mix_Resume chan))
+
+;;;;;
+;; @param chan If the specified 'chan' is -1, check all channels.
+;; @return If the specified 'chan' is -1, return the number of channels in posed.
+;; Otherwise, return the boolean value.
+(define-cproc mix-paused (chan::<int>) :: <top>
+  (let* ([ret :: int (Mix_Paused chan)])
+    (if (== -1 chan)
+      (result (boxing ret <int>))
+      (result (boxing ret <boolean>)))))
+
+(define-cproc mix-pause-music () :: <void>
+  (Mix_PauseMusic))
+
+(define-cproc mix-resume-music () :: <void>
+  (Mix_ResumeMusic))
+
+(define-cproc mix-rewind-music () :: <void>
+  (Mix_RewindMusic))
+
+(define-cproc mix-paused-music () :: <boolean>
+  (result (Mix_PausedMusic)))
+
+;;;;;
+;; Set the current position in the music stream.
+;; This function is only implemented for MOD music formats (set pattern
+;; order number) and for OGG music (set position in seconds), at the moment.
+(define-cproc mix-set-music-position (position::<real>) :: <void>
+  (if (== -1 (Mix_SetMusicPosition position))
+    (raise-mixer-error mix-set-music-position)))
+
+;;;;;
+;; Check the status of a specific channel.
+;; @param chan If the specified channel is -1, check all channels.
+;; @return If the specified 'chan' is -1, return the number of channels in playing.
+;; Otherwise, return the boolean value.
+(define-cproc mix-playing (chan::<int>) :: <top>
+  (let* ([ret :: int (Mix_Playing chan)])
+    (if (== -1 chan)
+      (result (boxing ret <int>))
+      (result (boxing ret <boolean>)))))
+
+(define-cproc mix-playing-music () :: <boolean>
+  (result (Mix_PlayingMusic)))
+
+;;;;;
+;; Stop music and set external music playback command
+(define-cproc mix-set-music-cmd (command::<top>) :: <void>
+  (let* ([cmd :: (const char*)])
+    (cond
+      [(false? command) (set! cmd 0)]
+      [(is-type? command <const-cstring>) (set! cmd (unboxing command <const-cstring>))]
+      [else (Scm_Error "<const-cstring> or #f required, but got %S." command)])
+    (if (== -1 (Mix_SetMusicCMD cmd))
+      (raise-mixer-error mix-set-music-cmd))))
+
+;;;;;
+;; Synchro value is set by MikMod from modules while playing
+(define-cproc mix-set-synchro-value (value::<int>) :: <void>
+  (if (== -1 (Mix_SetSynchroValue value))
+    (raise-mixer-error mix-set-synchro-value)))
+
+(define-cproc mix-get-synchro-value () :: <int>
+  (let* ([ret :: int (Mix_GetSynchroValue)])
+    (if (== -1 ret)
+      (raise-mixer-error mix-get-synchro-value)
+      (result ret))))
+
+;;;;;
+;; Get the Mix_Chunk currently associated with a mixer channel
+;; Raise <sdl-error>NULL if it's an invalid channel, or there's no chunk associated.
+(define-cproc mix-get-chunk (chan::<int>) :: <top>
+  (let* ([chunk :: Mix_Chunk* (Mix_GetChunk chan)])
+    (when (zero? chunk)
+      (raise-mixer-error mix-get-chunk))
+    (let* ([ret :: ScmObj (boxing chunk <mix-chunk>)])
+      (Scm_UnregisterFinalizer ret)
+      (result ret))))
+
+;;;;;
+;; Close the mixer, halting all playing audio
+(define-cproc mix-close-audio () :: <void>
+  (Mix_CloseAudio))
+

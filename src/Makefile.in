@@ -57,6 +57,7 @@ sdl_STUB_TYPE_HDRS = sdl_type.gen.stub.header
 all : $(TARGET)
 	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) all); fi
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) all); fi
+	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) all); fi
 
 #generate stub -> c file
 .SUFFIXES:.stub .c
@@ -79,32 +80,38 @@ check : all
 	$(GOSH) -I. -I$(srcdir) $(srcdir)/test.scm > test.log
 	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) check); fi
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) check); fi
+	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) check); fi
 
 install : all
 	$(INSTALL) -m 444 -T $(GAUCHE_PKGINCDIR) $(HEADERS)
 	$(INSTALL) -m 555 -T $(GAUCHE_PKGARCHDIR) $(ARCHFILES)
 	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) install); fi
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) install); fi
+	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) install); fi
 
 uninstall :
 	$(INSTALL) -U $(GAUCHE_PKGINCDIR) $(HEADERS)
 	$(INSTALL) -U $(GAUCHE_PKGARCHDIR) $(ARCHFILES)
 	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) uninstall); fi
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) uninstall); fi
+	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) uninstall); fi
 
 clean :
 	$(GAUCHE_PACKAGE) compile --clean gauche_sdl $(gauche_sdl_SRCS)
 	rm -rf core $(TARGET) $(GENERATED) *~ test.log so_locations
 	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) clean); fi
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) clean); fi
+	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) clean); fi
 
 distclean : clean
 	rm -rf $(CONFIG_GENERATED)
 	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) distclean); fi
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) distclean); fi
+	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) distclean); fi
 
 maintainer-clean : clean
 	rm -rf $(CONFIG_GENERATED) configure VERSION
 	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) maintainer-clean); fi
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) maintainer-clean); fi
+	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) maintainer-clean); fi
 

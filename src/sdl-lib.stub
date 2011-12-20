@@ -346,7 +346,7 @@ ScmObj userdata;
 int first_callP;
 }OpenAudioData;
 
-static ScmVM* Scm_AudioVM;
+ScmVM* Scm_AudioVM;
 "
 
 ;; is mean the len?

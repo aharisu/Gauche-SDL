@@ -1,0 +1,11 @@
+;;;
+;;; mixer.scm - Gauche SDL_mixer binding
+;;;
+
+(define-module sdl.mixer
+  (use sdl)
+  (export-all)
+  )
+(select-module sdl.mixer)
+
+(dynamic-load "gauche-sdl-mixer")

@@ -3649,7 +3649,7 @@ $as_echo "$as_me: creating ${PACKAGE_NAME}.gpd" >&6;}
   -configure "./configure $GAUCHE_PACKAGE_CONFIGURE_ARGS"
 
 echo $PACKAGE_VERSION > VERSION
-ac_config_files="$ac_config_files Makefile src/Makefile src/image/Makefile src/ttf/Makefile lib/Makefile lib/sdl/Makefile"
+ac_config_files="$ac_config_files Makefile src/Makefile src/image/Makefile src/ttf/Makefile src/mixer/Makefile lib/Makefile lib/sdl/Makefile"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -4360,6 +4360,7 @@ do
     "src/Makefile") CONFIG_FILES="$CONFIG_FILES src/Makefile" ;;
     "src/image/Makefile") CONFIG_FILES="$CONFIG_FILES src/image/Makefile" ;;
     "src/ttf/Makefile") CONFIG_FILES="$CONFIG_FILES src/ttf/Makefile" ;;
+    "src/mixer/Makefile") CONFIG_FILES="$CONFIG_FILES src/mixer/Makefile" ;;
     "lib/Makefile") CONFIG_FILES="$CONFIG_FILES lib/Makefile" ;;
     "lib/sdl/Makefile") CONFIG_FILES="$CONFIG_FILES lib/sdl/Makefile" ;;
 
