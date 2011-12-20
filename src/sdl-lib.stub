@@ -276,6 +276,7 @@ do {\
 (define-cproc make-sdl-audio-spec (freq::<int> format::<uint16> channels::<uint8>
                                                 samples::<uint16> callback::<closure> 
                                                 :optional userdata::<top>)  ::<sdl-audio-spec>
+  (check-func-require callback 2 userdata)
   (let* ([wrapper::SDL_AudioSpecWrapper* (SCM_NEW SDL_AudioSpecWrapper)])
     (set! (@ wrapper->audio.freq) freq)
     (set! (@ wrapper->audio.format) format)
@@ -355,9 +356,12 @@ static ScmVM* Scm_AudioVM;
       (Scm_AttachVM Scm_AudioVM)
       (set! (@ data->first-call?) 0))
     (SET_UNVECTOR_DATA (@ data->vector) stream TYPE_U8 len)
-    (Scm_ApplyRec2 (SCM_OBJ (@ data->callback)) 
-                   (@ data->userdata)
-                   (SCM_OBJ (@ data->vector)))))
+    (if (== 1 (SCM_PROCEDURE_REQUIRED (@ data->callback)))
+      (Scm_ApplyRec1 (SCM_OBJ (@ data->callback))
+                     (SCM_OBJ (@ data->vector)))
+      (Scm_ApplyRec2 (SCM_OBJ (@ data->callback)) 
+                     (@ data->userdata)
+                     (SCM_OBJ (@ data->vector))))))
 
 ;;;;;;
 ;; This function opens the audio device with the desired parameters, and
@@ -2095,10 +2099,14 @@ static ScmVM* Scm_TimerVM;
     (when (@ p->first-call?)
       (Scm_AttachVM Scm_TimerVM)
       (set! (@ p->first-call?) 0))
-    (return (unboxing (Scm_ApplyRec2
-                        (@ p->callback)
-                        (boxing interval <uint32>)
-                        (@ p->param))
+    (return (unboxing (?: (== 1 (SCM_PROCEDURE_REQUIRED (@ p->callback)))
+                          (Scm_ApplyRec1
+                            (@ p->callback)
+                            (boxing interval <uint32>))
+                          (Scm_ApplyRec2
+                            (@ p->callback)
+                            (boxing interval <uint32>)
+                            (@ p->param)))
                       <uint32>))))
 
 ;;;;;
@@ -2108,6 +2116,7 @@ static ScmVM* Scm_TimerVM;
                               :optional param::<top>) :: <sdl-timer>
   (when (zero? Scm_TimerVM)
     (set! Scm_TimerVM (Scm_NewVM (Scm_VM) (boxing "timer" <const-cstring>))))
+  (check-func-require callback 2 param)
   (let* ([p :: TimerParam* (SCM_NEW TimerParam)])
     (set! (@ p->callback) (SCM_OBJ callback))
     (set! (@ p->param) param)

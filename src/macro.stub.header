@@ -176,6 +176,19 @@ typedef double _double_t;
        (Scm_Error ,#`",(~ type 'description) required, but got %S" ,obj))))
 
 
+(define-cise-stmt check-func-require
+  [(_ func req)
+   `(if (!= (SCM_PROCEDURE_REQUIRED ,func) ,req)
+      (Scm_Error ,#`"Must be a ',(symbol->string func)' that requires ,req arguments"))]
+  [(_ func req data)
+   `(if (SCM_UNBOUNDP ,data)
+      (case (SCM_PROCEDURE_REQUIRED ,func)
+        [(,(- req 1) ,req) ]
+        [else (Scm_Error ,#`"Must be a ',(symbol->string func)' function that requires ,(- req 1) or ,req arguments")])
+      (check-func-require ,func ,req))])
+
+
+
 (define-cise-expr (null? obj)
   `(SCM_NULLP ,obj))
 
