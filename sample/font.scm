@@ -12,8 +12,15 @@
 (define (draw)
   (sdl-blit-surface background-image #f screen #f)
   ;; render text
-  (sdl-blit-surface (ttf-render-text-solid font "Hello SDL World" (make-sdl-color 255 0 0)) #f
-                    screen (make-sdl-rect 10 50 0 0))
+  (let1 height (ttf-font-height font)
+    (sdl-blit-surface (ttf-render-text-solid font "Hello SDL World" (make-sdl-color 0 0 0)) #f
+                      screen (make-sdl-rect 10 50 0 0))
+    (sdl-blit-surface (ttf-render-text-blended font "Hello SDL World" (make-sdl-color 0 0 0)) #f
+                      screen (make-sdl-rect 10 (+ 50 (* height 1)) 0 0))
+    (sdl-blit-surface (ttf-render-text-solid font "こんにちはSDL" (make-sdl-color 0 0 0)) #f
+                      screen (make-sdl-rect 0 (+ 70 (* height 2)) 0 0))
+    (sdl-blit-surface (ttf-render-text-blended font "こんにちはSDL" (make-sdl-color 0 0 0)) #f
+                      screen (make-sdl-rect 0 (+ 70 (* height 3)) 0 0)))
   (sdl-update-rect screen 0 0 0 0))
 
 (define (initialize)
@@ -25,7 +32,7 @@
 
   (set! background-image (img-load "res/background.png"))
   ;; open ttf font
-  (set! font (ttf-open-font "res/LAUREHEA.TTF" 42))
+  (set! font (ttf-open-font "res/YOzBAF.TTC" 62))
   )
 
 (define-constant wait (/ 1000 60))
