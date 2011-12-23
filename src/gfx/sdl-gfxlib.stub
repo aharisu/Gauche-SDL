@@ -1,0 +1,966 @@
+
+"
+#include \"gauche-sdl-gfx.h\"
+#include \"../sdl_type.gen.h\"
+#include \"gfx_type.gen.h\"
+#include <SDL/SDL_gfxBlitFunc.h>
+#include <SDL/SDL_rotozoom.h>
+#include <SDL/SDL_imageFilter.h>
+"
+
+(include "gfx_type.gen.stub.header")
+(include "../sdl_type.gen.stub.header")
+(include "../macro.stub.header")
+
+"
+#define TYPE_U8 1
+#define TYPE_U16 2
+#define TYPE_U32 4
+#define SET_UNVECTOR_DATA(obj, v_buf, v_type, v_size) \
+do {\
+  SCM_UNVECTOR_DATA(obj).buf = (v_buf); \
+  SCM_UNVECTOR_DATA(obj).size = (v_size);  \
+  SCM_UNVECTOR_DATA(obj).type  = (v_type);  \
+}while(0)
+"
+
+(define-cise-stmt (set-ctx-data var obj)
+  `(cond
+     [(is-type? ,obj <sdl-rw-ops>)
+      (set! ,var (unboxing ,obj <sdl-rw-ops>))]
+     [(is-type? ,obj <sdl-rw-ops-user>)
+      (set! ,var (cast SDL_RWops* (unboxing ,obj <sdl-rw-ops-user>)))]
+     [else (Scm_Error "<sdl-rw-ops> required, but got %S." ,obj)]))
+
+(define-cfn scm-finalize-sdl-surface (obj::ScmObj data::void*) :: void
+  (let* ([o :: ScmSDL_Surface* (SCM_SDL_SURFACE obj)])
+    (when (@ o->data)
+      (SDL_FreeSurface (@ o->data))
+      (set! (@ o->data) 0))))
+
+(define-cise-stmt raise-gfx-error 
+  [(_ func-name)
+    `(Scm_RaiseCondition
+      (SCM_OBJ SCM_CLASS_SDL_ERROR)
+       SCM_RAISE_CONDITION_MESSAGE
+        "%s: %s"
+         ,(symbol->string func-name) (SDL_GetError))])
+
+
+;;---------------
+;; SDL_framerate.h
+;;---------------
+
+(define-cclass <gfx-fps-manager>
+  "Scm_FPSmanager*" "Scm_FPSmanagerClass"
+  ()
+  (
+   (framecount :type <uint32>
+               :setter #f)
+   (rateticks :type <real>
+             :setter #f)
+   (lastticks :type <uint32>
+              :setter #f)
+   (rate :type <uint32>
+         :setter #f)
+   )
+  )
+
+(define-cproc gfx-init-framerate () :: <gfx-fps-manager>
+  (let* ([obj :: FPSmanager* (SCM_NEW FPSmanager)])
+    (SDL_initFramerate obj)
+    (result obj)))
+
+(define-cproc gfx-set-framerate (manager::<gfx-fps-manager> rate::<int>) :: <void>
+  (unless (zero? (SDL_setFramerate manager rate))))
+
+(define-cproc gfx-framerate-delay (manager::<gfx-fps-manager>) :: <void>
+  (SDL_framerateDelay manager))
+
+
+;;---------------
+;; SDL_gfxBlitFunc.h
+;;---------------
+
+(define-cproc gfx-gfx-blit-rgba (src::<sdl-surface> srcrect::<top> dst::<sdl-surface> dstrect::<top>) :: <void>
+  (ENSURE_NOT_NULL src)
+  (ENSURE_NOT_NULL dst)
+  (let* ([p-srcrect-data :: SDL_Rect*]
+         [p-dstrect-data :: SDL_Rect*])
+    (cond
+      [(false? srcrect) (set! p-srcrect-data 0)]
+      [(is-type? srcrect <sdl-rect>)
+        (set! p-srcrect-data (& (SCM_SDL_RECT_DATA srcrect)))]
+      [else (Scm_Error "<sdl-rect> required, but got %S." srcrect)])
+    (cond
+      [(false? dstrect) (set! p-dstrect-data 0)]
+      [(is-type? dstrect <sdl-rect>)
+        (set! p-dstrect-data (& (SCM_SDL_RECT_DATA dstrect)))]
+      [else (Scm_Error "<sdl-rect> required, but got %S." dstrect)])
+    (unless (zero? (SDL_gfxBlitRGBA src p-srcrect-data dst p-dstrect-data))
+      (raise-gfx-error gfx-gfx-blit-rgba))))
+
+(define-cproc gfx-gfx-set-alpha (src::<sdl-surface> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL src)
+  (unless (zero? (SDL_gfxSetAlpha src a))))
+
+
+;;---------------
+;; SDL_gfxPrimitives.h
+;;---------------
+
+(define-cise-expr (cast-color color)
+  `(* (cast (unsigned int*) (& (unboxing ,color <sdl-color>)))))
+
+(define-cproc gfx-pixel-color (dst::<sdl-surface> x::<int16> y::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (pixelColor dst x y color-data))
+      (raise-gfx-error gfx-pixel-color))))
+
+(define-cproc gfx-pixel-rgba (dst::<sdl-surface> x::<int16> y::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (pixelRGBA dst x y r g b a))
+    (raise-gfx-error gfx-pixel-rgba)))
+
+(define-cproc gfx-hline-color (dst::<sdl-surface> x1::<int16> x2::<int16> y::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (hlineColor dst x1 x2 y color-data))
+      (raise-gfx-error gfx-hline-color))))
+
+(define-cproc gfx-hline-rgba (dst::<sdl-surface> x1::<int16> x2::<int16> y::<int16> 
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (hlineRGBA dst x1 x2 y r g b a))
+    (raise-gfx-error gfx-hline-rgba)))
+
+(define-cproc gfx-vline-color (dst::<sdl-surface> x1::<int16> x2::<int16> y::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (vlineColor dst x1 x2 y color-data))
+      (raise-gfx-error gfx-vline-color))))
+
+(define-cproc gfx-vline-rgba (dst::<sdl-surface> x1::<int16> x2::<int16> y::<int16> 
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (vlineRGBA dst x1 x2 y r g b a))
+    (raise-gfx-error gfx-vline-rgba)))
+
+(define-cproc gfx-rectangle-color (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16>  y2::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (rectangleColor dst x1 y1 x2 y2 color-data))
+      (raise-gfx-error gfx-rectangle-color))))
+
+(define-cproc gfx-rectangle-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (rectangleRGBA dst x1 y1 x2 y2 r g b a))
+    (raise-gfx-error gfx-rectangle-rgba)))
+
+(define-cproc gfx-box-color (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16>  y2::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (boxColor dst x1 y1 x2 y2 color-data))
+      (raise-gfx-error gfx-box-color))))
+
+(define-cproc gfx-box-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (boxRGBA dst x1 y1 x2 y2 r g b a))
+    (raise-gfx-error gfx-box-rgba)))
+
+(define-cproc gfx-line-color (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16>  y2::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (lineColor dst x1 y1 x2 y2 color-data))
+      (raise-gfx-error gfx-line-color))))
+
+(define-cproc gfx-line-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (lineRGBA dst x1 y1 x2 y2 r g b a))
+    (raise-gfx-error gfx-line-rgba)))
+
+(define-cproc gfx-aaline-color (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16>  y2::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (aalineColor dst x1 y1 x2 y2 color-data))
+      (raise-gfx-error gfx-aaline-color))))
+
+(define-cproc gfx-aaline-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (aalineRGBA dst x1 y1 x2 y2 r g b a))
+    (raise-gfx-error gfx-aaline-rgba)))
+
+(define-cproc gfx-circle-color (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (circleColor dst x y rad color-data))
+      (raise-gfx-error gfx-circle-color))))
+
+(define-cproc gfx-circle-rgba (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (circleRGBA dst x y rad r g b a))
+    (raise-gfx-error gfx-circle-rgba)))
+
+(define-cproc gfx-arc-color (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16> 
+                                                start::<int16> end::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (arcColor dst x y rad start end color-data))
+      (raise-gfx-error gfx-arc-color))))
+
+(define-cproc gfx-arc-rgba (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16> start::<int16> end::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (arcRGBA dst x y rad start end r g b a))
+    (raise-gfx-error gfx-arc-rgba)))
+
+(define-cproc gfx-aacircle-color (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (aacircleColor dst x y rad color-data))
+      (raise-gfx-error gfx-aacircle-color))))
+
+(define-cproc gfx-aacircle-rgba (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (aacircleRGBA dst x y rad r g b a))
+    (raise-gfx-error gfx-aacircle-rgba)))
+
+(define-cproc gfx-filled-circle-color (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (filledCircleColor dst x y rad color-data))
+      (raise-gfx-error gfx-filled-circle-color))))
+
+(define-cproc gfx-filled-circle-rgba (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (filledCircleRGBA dst x y rad r g b a))
+    (raise-gfx-error gfx-filled-circle-rgba)))
+
+(define-cproc gfx-ellipse-color (dst::<sdl-surface> x::<int16> y::<int16> rx::<int16> ry::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (ellipseColor dst x y rx ry color-data))
+      (raise-gfx-error gfx-ellipse-color))))
+
+(define-cproc gfx-ellipse-rgba (dst::<sdl-surface> x::<int16> y::<int16> rx::<int16> ry::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (ellipseRGBA dst x y rx ry r g b a))
+    (raise-gfx-error gfx-ellipse-rgba)))
+
+(define-cproc gfx-aaellipse-color (dst::<sdl-surface> x::<int16> y::<int16> rx::<int16> ry::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (aaellipseColor dst x y rx ry color-data))
+      (raise-gfx-error gfx-aaellipse-color))))
+
+(define-cproc gfx-aaellipse-rgba (dst::<sdl-surface> x::<int16> y::<int16> rx::<int16> ry::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (aaellipseRGBA dst x y rx ry r g b a))
+    (raise-gfx-error gfx-aaellipse-rgba)))
+
+(define-cproc gfx-filled-ellipse-color (dst::<sdl-surface> x::<int16> y::<int16> rx::<int16> ry::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (filledEllipseColor dst x y rx ry color-data))
+      (raise-gfx-error gfx-filled-ellipse-color))))
+
+(define-cproc gfx-filled-ellipse-rgba (dst::<sdl-surface> x::<int16> y::<int16> rx::<int16> ry::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (filledEllipseRGBA dst x y rx ry r g b a))
+    (raise-gfx-error gfx-filled-ellipse-rgba)))
+
+(define-cproc gfx-pie-color (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16>
+                                                start::<int16> end::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (pieColor dst x y rad start end color-data))
+      (raise-gfx-error gfx-pie-color))))
+
+(define-cproc gfx-pie-rgba (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16> start::<int16> end::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (pieRGBA dst x y rad start end r g b a))
+    (raise-gfx-error gfx-pie-rgba)))
+
+(define-cproc gfx-filled-pie-color (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16>
+                                                start::<int16> end::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (filledPieColor dst x y rad start end color-data))
+      (raise-gfx-error gfx-filled-pie-color))))
+
+(define-cproc gfx-filled-pie-rgba (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16> start::<int16> end::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (filledPieRGBA dst x y rad start end r g b a))
+    (raise-gfx-error gfx-filled-pie-rgba)))
+
+(define-cproc gfx-trigon-color (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16> x3::<int16> y3::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (trigonColor dst x1 y1 x2 y2 x3 y3 color-data))
+      (raise-gfx-error gfx-trigon-color))))
+
+(define-cproc gfx-trigon-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16> x3::<int16> y3::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (trigonRGBA dst x1 y1 x2 y2 x3 y3 r g b a))
+    (raise-gfx-error gfx-trigon-rgba)))
+
+(define-cproc gfx-aatrigon-color (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16> x3::<int16> y3::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (aatrigonColor dst x1 y1 x2 y2 x3 y3 color-data))
+      (raise-gfx-error gfx-aatrigon-color))))
+
+(define-cproc gfx-aatrigon-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16> x3::<int16> y3::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (aatrigonRGBA dst x1 y1 x2 y2 x3 y3 r g b a))
+    (raise-gfx-error gfx-aatrigon-rgba)))
+
+(define-cproc gfx-filled-trigon-color (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16> x3::<int16> y3::<int16> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (filledTrigonColor dst x1 y1 x2 y2 x3 y3 color-data))
+      (raise-gfx-error gfx-filled-trigon-color))))
+
+(define-cproc gfx-filled-trigon-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16> x3::<int16> y3::<int16>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (filledTrigonRGBA dst x1 y1 x2 y2 x3 y3 r g b a))
+    (raise-gfx-error gfx-filled-trigon-rgba)))
+
+"
+#define TMP_ARY_SIZE 30
+"
+(eval-in-current-module
+  (gen-elem-assign <int16>)
+  )
+(define-cproc gfx-polygon-color (dst::<sdl-surface> vx::<top> vy::<top> n::<int> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32]
+         [p-vx :: Sint16*]
+         [tmp-vx :: (.array Sint16 (TMP_ARY_SIZE))]
+         [p-vy :: Sint16*]
+         [tmp-vy :: (.array Sint16 (TMP_ARY_SIZE))])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (cond
+      [(is-type? vx <s16vector>)
+       (set! p-vx (SCM_S16VECTOR_ELEMENTS vx))]
+      [(is-type? vx <vector>)
+       (vector-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vx <list>)
+       (list-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vx)])
+    (cond
+      [(is-type? vy <s16vector>)
+       (set! p-vy (SCM_S16VECTOR_ELEMENTS vy))]
+      [(is-type? vy <vector>)
+       (vector-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vy <list>)
+       (list-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vy)])
+    (unless (zero? (polygonColor dst p-vx p-vy n color-data))
+      (raise-gfx-error gfx-polygon-color))))
+
+(define-cproc gfx-polygon-rgba (dst::<sdl-surface> vx::<top> vy::<top> n::<int> 
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([p-vx :: Sint16*]
+         [tmp-vx :: (.array Sint16 (TMP_ARY_SIZE))]
+         [p-vy :: Sint16*]
+         [tmp-vy :: (.array Sint16 (TMP_ARY_SIZE))])
+    (cond
+      [(is-type? vx <s16vector>)
+       (set! p-vx (SCM_S16VECTOR_ELEMENTS vx))]
+      [(is-type? vx <vector>)
+       (vector-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vx <list>)
+       (list-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vx)])
+    (cond
+      [(is-type? vy <s16vector>)
+       (set! p-vy (SCM_S16VECTOR_ELEMENTS vy))]
+      [(is-type? vy <vector>)
+       (vector-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vy <list>)
+       (list-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vy)])
+    (unless (zero? (polygonRGBA dst p-vx p-vy n r g b a))
+      (raise-gfx-error gfx-polygon-rgba))))
+
+(define-cproc gfx-aapolygon-color (dst::<sdl-surface> vx::<top> vy::<top> n::<int> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32]
+         [p-vx :: Sint16*]
+         [tmp-vx :: (.array Sint16 (TMP_ARY_SIZE))]
+         [p-vy :: Sint16*]
+         [tmp-vy :: (.array Sint16 (TMP_ARY_SIZE))])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (cond
+      [(is-type? vx <s16vector>)
+       (set! p-vx (SCM_S16VECTOR_ELEMENTS vx))]
+      [(is-type? vx <vector>)
+       (vector-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vx <list>)
+       (list-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vx)])
+    (cond
+      [(is-type? vy <s16vector>)
+       (set! p-vy (SCM_S16VECTOR_ELEMENTS vy))]
+      [(is-type? vy <vector>)
+       (vector-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vy <list>)
+       (list-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vy)])
+    (unless (zero? (aapolygonColor dst p-vx p-vy n color-data))
+      (raise-gfx-error gfx-aapolygon-color))))
+
+(define-cproc gfx-aapolygon-rgba (dst::<sdl-surface> vx::<top> vy::<top> n::<int> 
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([p-vx :: Sint16*]
+         [tmp-vx :: (.array Sint16 (TMP_ARY_SIZE))]
+         [p-vy :: Sint16*]
+         [tmp-vy :: (.array Sint16 (TMP_ARY_SIZE))])
+    (cond
+      [(is-type? vx <s16vector>)
+       (set! p-vx (SCM_S16VECTOR_ELEMENTS vx))]
+      [(is-type? vx <vector>)
+       (vector-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vx <list>)
+       (list-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vx)])
+    (cond
+      [(is-type? vy <s16vector>)
+       (set! p-vy (SCM_S16VECTOR_ELEMENTS vy))]
+      [(is-type? vy <vector>)
+       (vector-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vy <list>)
+       (list-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vy)])
+    (unless (zero? (aapolygonRGBA dst p-vx p-vy n r g b a))
+      (raise-gfx-error gfx-aapolygon-rgba))))
+
+(define-cproc gfx-filled-polygon-color (dst::<sdl-surface> vx::<top> vy::<top> n::<int> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32]
+         [p-vx :: Sint16*]
+         [tmp-vx :: (.array Sint16 (TMP_ARY_SIZE))]
+         [p-vy :: Sint16*]
+         [tmp-vy :: (.array Sint16 (TMP_ARY_SIZE))])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (cond
+      [(is-type? vx <s16vector>)
+       (set! p-vx (SCM_S16VECTOR_ELEMENTS vx))]
+      [(is-type? vx <vector>)
+       (vector-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vx <list>)
+       (list-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vx)])
+    (cond
+      [(is-type? vy <s16vector>)
+       (set! p-vy (SCM_S16VECTOR_ELEMENTS vy))]
+      [(is-type? vy <vector>)
+       (vector-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vy <list>)
+       (list-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vy)])
+    (unless (zero? (filledPolygonColor dst p-vx p-vy n color-data))
+      (raise-gfx-error gfx-filled-polygon-color))))
+
+(define-cproc gfx-filled-polygon-rgba (dst::<sdl-surface> vx::<top> vy::<top> n::<int> 
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([p-vx :: Sint16*]
+         [tmp-vx :: (.array Sint16 (TMP_ARY_SIZE))]
+         [p-vy :: Sint16*]
+         [tmp-vy :: (.array Sint16 (TMP_ARY_SIZE))])
+    (cond
+      [(is-type? vx <s16vector>)
+       (set! p-vx (SCM_S16VECTOR_ELEMENTS vx))]
+      [(is-type? vx <vector>)
+       (vector-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vx <list>)
+       (list-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vx)])
+    (cond
+      [(is-type? vy <s16vector>)
+       (set! p-vy (SCM_S16VECTOR_ELEMENTS vy))]
+      [(is-type? vy <vector>)
+       (vector-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vy <list>)
+       (list-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vy)])
+    (unless (zero? (filledPolygonRGBA dst p-vx p-vy n r g b a))
+      (raise-gfx-error gfx-filled-polygon-rgba))))
+
+(define-cproc gfx-textured-polygon (dst::<sdl-surface> vx::<top> vy::<top> n::<int> 
+                                    texture::<sdl-surface> texture-dx::<int> texture-dy::<int>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (ENSURE_NOT_NULL texture)
+  (let* ([p-vx :: Sint16*]
+         [tmp-vx :: (.array Sint16 (TMP_ARY_SIZE))]
+         [p-vy :: Sint16*]
+         [tmp-vy :: (.array Sint16 (TMP_ARY_SIZE))])
+    (cond
+      [(is-type? vx <s16vector>)
+       (set! p-vx (SCM_S16VECTOR_ELEMENTS vx))]
+      [(is-type? vx <vector>)
+       (vector-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vx <list>)
+       (list-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vx)])
+    (cond
+      [(is-type? vy <s16vector>)
+       (set! p-vy (SCM_S16VECTOR_ELEMENTS vy))]
+      [(is-type? vy <vector>)
+       (vector-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vy <list>)
+       (list-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vy)])
+    (unless (zero? (texturedPolygon dst p-vx p-vy n texture texture-dx texture-dy))
+      (raise-gfx-error gfx-textured-polygon))))
+
+(define-cproc gfx-bezier-color (dst::<sdl-surface> vx::<top> vy::<top> n::<int> s::<int> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32]
+         [p-vx :: Sint16*]
+         [tmp-vx :: (.array Sint16 (TMP_ARY_SIZE))]
+         [p-vy :: Sint16*]
+         [tmp-vy :: (.array Sint16 (TMP_ARY_SIZE))])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (cond
+      [(is-type? vx <s16vector>)
+       (set! p-vx (SCM_S16VECTOR_ELEMENTS vx))]
+      [(is-type? vx <vector>)
+       (vector-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vx <list>)
+       (list-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vx)])
+    (cond
+      [(is-type? vy <s16vector>)
+       (set! p-vy (SCM_S16VECTOR_ELEMENTS vy))]
+      [(is-type? vy <vector>)
+       (vector-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vy <list>)
+       (list-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vy)])
+    (unless (zero? (bezierColor dst p-vx p-vy n s color-data))
+      (raise-gfx-error gfx-bezier-color))))
+
+(define-cproc gfx-bezier-rgba (dst::<sdl-surface> vx::<top> vy::<top> n::<int> s::<int>
+                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([p-vx :: Sint16*]
+         [tmp-vx :: (.array Sint16 (TMP_ARY_SIZE))]
+         [p-vy :: Sint16*]
+         [tmp-vy :: (.array Sint16 (TMP_ARY_SIZE))])
+    (cond
+      [(is-type? vx <s16vector>)
+       (set! p-vx (SCM_S16VECTOR_ELEMENTS vx))]
+      [(is-type? vx <vector>)
+       (vector-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vx <list>)
+       (list-to-ary vx p-vx tmp-vx TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vx)])
+    (cond
+      [(is-type? vy <s16vector>)
+       (set! p-vy (SCM_S16VECTOR_ELEMENTS vy))]
+      [(is-type? vy <vector>)
+       (vector-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [(is-type? vy <list>)
+       (list-to-ary vy p-vy tmp-vy TMP_ARY_SIZE Sint16 <int16>-elem-assign)]
+      [else (Scm_Error "<16vector> or <vector> or <list> required, but got %S." vy)])
+    (unless (zero? (bezierRGBA dst p-vx p-vy n s r g b a))
+      (raise-gfx-error gfx-bezier-rgba))))
+
+(define-cproc gfx-character-color (dst::<sdl-surface> x::<int16> y::<int16> c::<char> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32]
+         [ch :: (unsigned long) (SCM_CHAR_VALUE ch)])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (SCM_CHAR_ASCII_P ch)
+      (Scm_Error "ascii character required, but got %S." c))
+    (unless (zero? (characterColor dst x y ch color-data))
+      (raise-gfx-error gfx-character-color))))
+
+(define-cproc gfx-character-rgba (dst::<sdl-surface> x::<int16> y::<int16> c::<char> 
+                                  r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([ch :: (unsigned long) (SCM_CHAR_VALUE ch)])
+    (unless (SCM_CHAR_ASCII_P ch)
+      (Scm_Error "ascii character required, but got %S." c))
+    (unless (zero? (characterRGBA dst x y c r g b a))
+      (raise-gfx-error gfx-character-rgba))))
+
+(define-cproc gfx-string-color (dst::<sdl-surface> x::<int16> y::<int16> str::<const-cstring> color::<top>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (let* ([color-data :: Uint32])
+    (cond
+      [(is-type? color <uint32>) (set! color-data (unboxing color <uint32>))]
+      [(is-type? color <sdl-color>) (set! color-data (cast-color color))]
+      [else (Scm_Error "<uint32> or <sdl-color> required, but got %S." color)])
+    (unless (zero? (stringColor dst x y str color-data))
+      (raise-gfx-error gfx-string-color))))
+
+(define-cproc gfx-string-rgba (dst::<sdl-surface> x::<int16> y::<int16> str::<const-cstring> 
+                                  r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+  (ENSURE_NOT_NULL dst)
+  (unless (zero? (stringRGBA dst x y str r g b a))
+    (raise-gfx-error gfx-string-rgba)))
+
+
+;;---------------
+;; SDL_rotozoom.h
+;;---------------
+
+;;;;;
+;; Rotates and zoomes a 32bit or 8bit 'src' surface to newly created 'dst' surface.
+;; If the surface is not 8bit or 32bit RGBA/ABGR it will be converted into a 32bit RGBA format on the fly.
+;; @param angle 'angle' is the rotation in degrees. 
+;; @param zoom 'zoom' a scaling factor. 
+;; @param smooth If 'smooth' is #t then the destination 32bit surface is anti-aliased.
+(define-cproc gfx-rotozoom-surface (src::<sdl-surface> angle::<real> zoom::<real> smooth::<boolean>) :: <top>
+  (ENSURE_NOT_NULL src)
+  (let* ([obj :: SDL_Surface* (rotozoomSurface src angle zoom smooth)])
+    (if (not obj)
+      (raise-gfx-error gfx-rotozoom-surface)
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+;;;;;
+;; Rotates and zoomes a 32bit or 8bit 'src' surface to newly created 'dst' surface.
+;; If the surface is not 8bit or 32bit RGBA/ABGR it will be converted into a 32bit RGBA format on the fly.
+;; @param angle 'angle' is the rotation in degrees. 
+;; @param zoomx the horizontal scaling factor.
+;; @param zoomy the vertical scaling factor.
+;; @param smooth If 'smooth' is #t then the destination 32bit surface is anti-aliased.
+(define-cproc gfx-rotozoom-surface-xy (src::<sdl-surface> angle::<real> zoomx::<real> zoomy::<real> smooth::<boolean>) :: <top>
+  (ENSURE_NOT_NULL src)
+  (let* ([obj :: SDL_Surface* (rotozoomSurfaceXY src angle zoomx zoomy smooth)])
+    (if (not obj)
+      (raise-gfx-error gfx-rotozoom-surface-xy)
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc gfx-rotozoom-surface-size (width::<int> height::<int> angle::<real> zoom::<real>) :: (<int> <int>) 
+  (let* ([destwidth :: int]
+         [destheight :: int])
+    (rotozoomSurfaceSize width height angle zoom (& destwidth) (& destheight))
+    (result destwidth destheight)))
+
+(define-cproc gfx-rotozoom-surface-size-xy (width::<int> height::<int> angle::<real> zoomx::<real> zoomy::<real>) :: (<int> <int>) 
+  (let* ([destwidth :: int]
+         [destheight :: int])
+    (rotozoomSurfaceSizeXY width height angle zoomx zoomy (& destwidth) (& destheight))
+    (result destwidth destheight)))
+
+(define-cproc gfx-zoom-surface (src::<sdl-surface> zoomx::<real> zoomy::<real> smooth::<boolean>) :: <top>
+  (ENSURE_NOT_NULL src)
+  (let* ([obj :: SDL_Surface* (zoomSurface src zoomx zoomy smooth)])
+    (if (not obj)
+      (raise-gfx-error gfx-zoom-surface)
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc gfx-zoom-surface-size (width::<int> height::<int> zoomx::<real> zoomy::<real>) :: (<int> <int>)
+  (let* ([destwidth :: int]
+         [destheight :: int])
+    (zoomSurfaceSize width height zoomx zoomy (& destwidth) (& destheight))
+    (result destwidth destheight)))
+
+(define-cproc gfx-shrink-surface (src::<sdl-surface> factorx::<int> factory::<int>) ::<top>
+  (ENSURE_NOT_NULL src)
+  (let* ([obj :: SDL_Surface* (shrinkSurface src factorx factory)])
+    (if (not obj)
+      (raise-gfx-error gfx-shrink-surface)
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+(define-cproc gfx-rotate-surface-90-degrees (src::<sdl-surface> num-clockwise-turns::<int>) :: <top>
+  (ENSURE_NOT_NULL src)
+  (let* ([obj :: SDL_Surface* (rotateSurface90Degrees src num-clockwise-turns)])
+    (if (not obj)
+      (raise-gfx-error gfx-rotate-surface-90-degrees)
+      (let* ([ret :: ScmObj (boxing obj <sdl-surface>)])
+        (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+        (result ret)))))
+
+;;;;;
+;; Detect MMX capability in CPU
+(define-cproc gfx-mmx-detect () :: <boolean>
+  (result (SDL_imageFilterMMXdetect)))
+
+;;;;;
+;; Force use of MMX off
+(define-cproc gfx-mmx-off () :: <void>
+  (SDL_imageFilterMMXoff))
+
+;;;;;
+;; Force use of MMX turn possible use back on
+(define-cproc gfx-mmx-on () :: <void>
+  (SDL_imageFilterMMXon))
+
+(define-cise-stmt check-eq-length
+  [(_ v1 v2)
+   `(unless (== (SCM_U8VECTOR_SIZE ,v1) (SCM_U8VECTOR_SIZE ,v2))
+      (Scm_Error "All must be equal in length."))]
+  [(_ v1 v2 v3)
+   `(unless (and (== (SCM_U8VECTOR_SIZE ,v1) (SCM_U8VECTOR_SIZE ,v2))
+              (== (SCM_U8VECTOR_SIZE ,v1) (SCM_U8VECTOR_SIZE ,v3)))
+      (Scm_Error "All must be equal in length."))]
+  )
+
+(define-cise-expr (u8vec vec)
+  `(SCM_U8VECTOR_ELEMENTS ,vec))
+
+(define-cise-expr (u8veclen vec)
+  `(SCM_U8VECTOR_SIZE ,vec))
+
+(define-cproc gfx-add (src1::<u8vector> src2::<u8vector> dest::<u8vector>) :: <void>
+  (check-eq-length src1 src2 dest)
+  (unless (zero? (SDL_imageFilterAdd (u8vec src1) (u8vec src2) (u8vec dest) (u8veclen src1)))
+    (raise-gfx-error gfx-add)))
+
+(define-cproc gfx-mean (src1::<u8vector> src2::<u8vector> dest::<u8vector>) :: <void>
+  (check-eq-length src1 src2 dest)
+  (unless (zero? (SDL_imageFilterMean (u8vec src1) (u8vec src2) (u8vec dest) (u8veclen src1)))
+    (raise-gfx-error gfx-mean)))
+
+(define-cproc gfx-sub (src1::<u8vector> src2::<u8vector> dest::<u8vector>) :: <void>
+  (check-eq-length src1 src2 dest)
+  (unless (zero? (SDL_imageFilterSub (u8vec src1) (u8vec src2) (u8vec dest) (u8veclen src1)))
+    (raise-gfx-error gfx-sub)))
+
+(define-cproc gfx-abs-diff (src1::<u8vector> src2::<u8vector> dest::<u8vector>) :: <void>
+  (check-eq-length src1 src2 dest)
+  (unless (zero? (SDL_imageFilterAbsDiff (u8vec src1) (u8vec src2) (u8vec dest) (u8veclen src1)))
+    (raise-gfx-error gfx-abs-diff)))
+
+(define-cproc gfx-mult (src1::<u8vector> src2::<u8vector> dest::<u8vector>) :: <void>
+  (check-eq-length src1 src2 dest)
+  (unless (zero? (SDL_imageFilterMult (u8vec src1) (u8vec src2) (u8vec dest) (u8veclen src1)))
+    (raise-gfx-error gfx-mult)))
+
+(define-cproc gfx-mult-nor (src1::<u8vector> src2::<u8vector> dest::<u8vector>) :: <void>
+  (check-eq-length src1 src2 dest)
+  (unless (zero? (SDL_imageFilterMultNor (u8vec src1) (u8vec src2) (u8vec dest) (u8veclen src1)))
+    (raise-gfx-error gfx-mult-nor)))
+
+(define-cproc gfx-mult-dev-by2 (src1::<u8vector> src2::<u8vector> dest::<u8vector>) :: <void>
+  (check-eq-length src1 src2 dest)
+  (unless (zero? (SDL_imageFilterMultDivby2 (u8vec src1) (u8vec src2) (u8vec dest) (u8veclen src1)))
+    (raise-gfx-error gfx-mult-dev-by2)))
+
+(define-cproc gfx-mult-div-by4 (src1::<u8vector> src2::<u8vector> dest::<u8vector>) :: <void>
+  (check-eq-length src1 src2 dest)
+  (unless (zero? (SDL_imageFilterMultDivby4 (u8vec src1) (u8vec src2) (u8vec dest) (u8veclen src1)))
+    (raise-gfx-error gfx-mult-div-by4)))
+
+(define-cproc gfx-bit-and (src1::<u8vector> src2::<u8vector> dest::<u8vector>) :: <void>
+  (check-eq-length src1 src2 dest)
+  (unless (zero? (SDL_imageFilterBitAnd (u8vec src1) (u8vec src2) (u8vec dest) (u8veclen src1)))
+    (raise-gfx-error gfx-bit-and)))
+
+(define-cproc gfx-bit-or (src1::<u8vector> src2::<u8vector> dest::<u8vector>) :: <void>
+  (check-eq-length src1 src2 dest)
+  (unless (zero? (SDL_imageFilterBitOr (u8vec src1) (u8vec src2) (u8vec dest) (u8veclen src1)))
+    (raise-gfx-error gfx-bit-or)))
+
+(define-cproc gfx-div (src1::<u8vector> src2::<u8vector> dest::<u8vector>) :: <void>
+  (check-eq-length src1 src2 dest)
+  (unless (zero? (SDL_imageFilterDiv (u8vec src1) (u8vec src2) (u8vec dest) (u8veclen src1)))
+    (raise-gfx-error gfx-div)))
+
+(define-cproc gfx-bit-negation (src1::<u8vector> dest::<u8vector>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterBitNegation (u8vec src1) (u8vec dest) (u8veclen src1)))
+    (raise-gfx-error gfx-bit-negation)))
+
+(define-cproc gfx-add-byte (src1::<u8vector> dest::<u8vector> c::<uint8>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterAddByte (u8vec src1)  (u8vec dest) (u8veclen src1) c))
+    (raise-gfx-error gfx-add-byte)))
+
+(define-cproc gfx-add-uint (src1::<u8vector> dest::<u8vector> c::<int>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterAddUint (u8vec src1)  (u8vec dest) (u8veclen src1) c))
+    (raise-gfx-error gfx-add-uint)))
+
+(define-cproc gfx-add-byte-to-half (src1::<u8vector> dest::<u8vector> c::<uint8>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterAddByteToHalf (u8vec src1)  (u8vec dest) (u8veclen src1) c))
+    (raise-gfx-error gfx-byte-to-half)))
+
+(define-cproc gfx-sub-byte (src1::<u8vector> dest::<u8vector> c::<uint8>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterSubByte (u8vec src1) (u8vec dest) (u8veclen src1) c))
+    (raise-gfx-error gfx-sub-byte)))
+
+(define-cproc gfx-sub-uint (src1::<u8vector> dest::<u8vector> c::<int>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterSubUint (u8vec src1) (u8vec dest) (u8veclen src1) c))
+    (raise-gfx-error gfx-sub-uint)))
+
+(define-cproc gfx-shift-right (src1::<u8vector> dest::<u8vector> n::<uint8>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterShiftRight (u8vec src1) (u8vec dest) (u8veclen src1) n))
+    (raise-gfx-error gfx-shift-right)))
+
+(define-cproc gfx-shift-right-uint (src1::<u8vector> dest::<u8vector> n::<uint8>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterShiftRightUint (u8vec src1) (u8vec dest) (u8veclen src1) n))
+    (raise-gfx-error gfx-shift-right-uint)))
+
+(define-cproc gfx-mult-by-byte (src1::<u8vector> dest::<u8vector> c::<uint8>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterMultByByte (u8vec src1) (u8vec dest) (u8veclen src1) c))
+    (raise-gfx-error gfx-mult-by-byte)))
+
+(define-cproc gfx-shift-right-and-mult-by-byte (src1::<u8vector> dest::<u8vector> n::<uint8> c::<uint8> ) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterShiftRightAndMultByByte (u8vec src1) (u8vec dest) (u8veclen src1) n c))
+    (raise-gfx-error gfx-right-and-mult-by-byte)))
+
+(define-cproc gfx-shift-left-byte (src1::<u8vector> dest::<u8vector> n::<uint8>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterShiftLeftByte (u8vec src1) (u8vec dest) (u8veclen src1) n))
+    (raise-gfx-error gfx-shift-left-byte)))
+
+(define-cproc gfx-shift-left-uint (src1::<u8vector> dest::<u8vector> n::<uint8>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterShiftLeftUint (u8vec src1) (u8vec dest) (u8veclen src1) n))
+    (raise-gfx-error gfx-shift-left-uint)))
+
+(define-cproc gfx-shift-left (src1::<u8vector> dest::<u8vector> n::<uint8>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterShiftLeft(u8vec src1) (u8vec dest) (u8veclen src1) n))
+    (raise-gfx-error gfx-shift-left)))
+
+(define-cproc gfx-binarize-using-threshold (src1::<u8vector> dest::<u8vector> t::<uint8>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterShiftLeft(u8vec src1) (u8vec dest) (u8veclen src1) t))
+    (raise-gfx-error gfx-binarize-using-threshold)))
+
+(define-cproc gfx-clip-to-range (src1::<u8vector> dest::<u8vector> t-min::<uint8> t-max::<uint8>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterClipToRange (u8vec src1) (u8vec dest) (u8veclen src1) t-min t-max))
+    (raise-gfx-error gfx-clip-to-range)))
+
+(define-cproc gfx-normalize-linear (src1::<u8vector> dest::<u8vector> 
+                                    c-min::<int> c-max::<int>
+                                    n-min::<int> n-max::<int>) :: <void>
+  (check-eq-length src1 dest)
+  (unless (zero? (SDL_imageFilterNormalizeLinear (u8vec src1) (u8vec dest) (u8veclen src1)
+                                                 c-min c-max n-min n-max))
+    (raise-gfx-error gfx-normalize-linear)))
+

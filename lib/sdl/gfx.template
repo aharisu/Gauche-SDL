@@ -1,0 +1,16 @@
+;;;
+;;; gfx.scm - Gauche SDL_gfx binding
+;;;
+
+;;;;;
+;;@type cmd
+;;@@parse-relative #f
+
+(define-module sdl.gfx
+  (use sdl)
+  (export-all)
+  )
+
+(select-module sdl.gfx)
+
+(dynamic-load "gauche-sdl-gfx")
