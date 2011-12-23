@@ -2,6 +2,10 @@
 ;;; mixer.scm - Gauche SDL_mixer binding
 ;;;
 
+;;;;;
+;;@type cmd
+;;@@parse-relative #f
+
 (define-module sdl.mixer
   (use sdl)
   (export-all)
