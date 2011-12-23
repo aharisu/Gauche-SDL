@@ -2290,6 +2290,13 @@ static ScmVM* Scm_TimerVM;
 (define-enum SDL_RESIZABLE)
 (define-enum SDL_NOFRAME)
 
+(define-enum SDL_HWACCEL)
+(define-enum SDL_SRCCOLORKEY)
+(define-enum SDL_RLEACCELOK)
+(define-enum SDL_RLEACCEL)
+(define-enum SDL_SRCALPHA)
+(define-enum SDL_PREALLOC)
+
 (define-cclass <sdl-video-info>
   :built-in
   "ScmSDL_VideoInfo*" "Scm_SDL_VideoInfoClass"
