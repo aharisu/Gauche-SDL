@@ -2046,6 +2046,7 @@ ScmVM* Scm_AudioVM;
         (raise-sdl-error sdl-rw-read)
         (begin
           (set! (@ vec.buf) buffer)
+          (set! (@ vec.type) TYPE_U8)
           (set! (@ vec.size) (* size result))
           (result vec))))))
 
@@ -2269,7 +2270,7 @@ static ScmVM* Scm_TimerVM;
    (pixels :type <unvector>
            :setter #f
            :getter "
-           unvector vec = {obj->pixels, obj->pitch};
+           unvector vec = {obj->pixels, obj->pitch, TYPE_U8};
            return Scm_Makeunvector(vec);
            ")
   (clip-rect :type <sdl-rect>
@@ -2363,6 +2364,7 @@ static ScmVM* Scm_TimerVM;
 (define-cproc sdl-overlay-pixels (overlay::<sdl-overlay> plane::<int>) :: <unvector>
   (let* ([vec :: unvector])
     (set! (@ vec.buf) (aref (@ overlay->pixels) plane))
+    (set! (@ vec.type) TYPE_U8)
     (set! (@ vec.size) (aref (@ overlay->pitches) plane))
     (result vec)))
 
