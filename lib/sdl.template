@@ -7,10 +7,33 @@
 ;;@@parse-relative #f
 
 (define-module sdl
+  (use gauche.sequence)
   (export-all)
   )
 (select-module sdl)
 
 ;; Loads extension
 (dynamic-load "gauche-sdl")
+
+(define-method call-with-iterator ((v <nnvector>) proc . opts)
+  (let-keywords opts ([start #f])
+    (let* ([len (slot-ref v 'length)]
+           [i (or start 0)]
+           [ref (let ([type (slot-ref v 'type)])
+                  (cond
+                    [(eq? type u8) un8vector-ref]
+                    [(eq? type u16) un16vector-ref]
+                    [(eq? type u32) un32vector-ref]
+                    [else (raise (condition
+                                   (<error> (message "illegal type."))))]))])
+      (proc (lambda () (>= i len))
+            (lambda () (let ([r (ref v i)])
+                         (inc! i)
+                         r))))))
+
+;;not support call-with-builder
+
+(define-method referencer ((v <nnvector>)) nnvector-ref)
+(define-method modifier ((v <nnvector>)) nnvector-set!)
+(define-method size-of ((v <nnvector>)) (slot-ref v 'length))
 

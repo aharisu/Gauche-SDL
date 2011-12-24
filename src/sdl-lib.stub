@@ -11,7 +11,7 @@
 (include "macro.stub.header")
 
 ;;--------------
-;; <unvector>
+;; <nnvector>
 ;;--------------
 
 "
@@ -24,8 +24,8 @@
 (define-constant u32 4)
 
 "
-#define UNVECTOR_LENGTH2SIZE(type, len) ((type) * (len))
-#define UNVECTOR_SIZE2LENGTH(type, size) ((size) / (type))
+#define NNVECTOR_LENGTH2SIZE(type, len) ((type) * (len))
+#define NNVECTOR_SIZE2LENGTH(type, size) ((size) / (type))
 "
 
 (define-cise-stmt (un-case type u8-stmt u16-stmt u32-stmt)
@@ -35,25 +35,31 @@
      [(4) ,u32-stmt]
      [else (Scm_Error "type mismatch")]))
 
-(define-cclass <unvector>
+;;;;;
+;; @type cmd
+;; @@class-c->scm Scm_SequenceClass <sequence>
+;; @@class-c->scm Scm_CollectionClass <collection>
+
+(define-cclass <nnvector>
   :built-in :struct
-  "Scm_unvector*" "Scm_unvectorClass"
-  ()
+  "Scm_nnvector*" "Scm_nnvectorClass"
+  ("Scm_SequenceClass" "Scm_CollectionClass")
   (
    (type :type <fixnum>)
    (length :type <int>
            :setter #f
-           :getter "return SCM_MAKE_INT(UNVECTOR_SIZE2LENGTH(
-            SCM_UNVECTOR_DATA(OBJARG).type, SCM_UNVECTOR_DATA(OBJARG).size));
+           :getter "return SCM_MAKE_INT(NNVECTOR_SIZE2LENGTH(
+            SCM_NNVECTOR_DATA(OBJARG).type, SCM_NNVECTOR_DATA(OBJARG).size));
    ")
    (size :type <int>
          :setter #f
-         :getter "return SCM_MAKE_INT(SCM_UNVECTOR_DATA(OBJARG).size);")
+         :getter "return SCM_MAKE_INT(SCM_NNVECTOR_DATA(OBJARG).size);")
    )
+  (meta #t)
   (printer "
            int i;
-           unvector* vec = &(SCM_UNVECTOR_DATA(obj));
-           int len = UNVECTOR_SIZE2LENGTH(vec->type, vec->size);
+           nnvector* vec = &(SCM_NNVECTOR_DATA(obj));
+           int len = NNVECTOR_SIZE2LENGTH(vec->type, vec->size);
 
            Scm_Printf(port, \"#un%d(\", vec->type * 8);
            switch(vec->type) {
@@ -81,51 +87,160 @@
   )
 
 
-(define-cproc make-unvector (type::<fixnum> len::<int>) ::<unvector>
-  (let* ([size::int (UNVECTOR_LENGTH2SIZE type len)]
-         [vec::unvector])
+(define-cproc make-nnvector (type::<fixnum> len::<int>) ::<nnvector>
+  (let* ([size::int (NNVECTOR_LENGTH2SIZE type len)]
+         [vec::nnvector])
     (set! (@ vec.buf) (SCM_NEW_ARRAY Uint8 size))
     (set! (@ vec.size) size)
     (set! (@ vec.type) type)
     (result vec)))
 
-(define-cproc unvector-set! (vec::<unvector> index::<int> num::<uint32>) ::<void>
+(define-cproc nnvector-set! (vec::<nnvector> index::<int> num::<uint32>) ::<void>
   (un-case (ref vec type)
            (set! (aref (cast Uint8* (@ vec.buf)) index) num)
            (set! (aref (cast Uint16* (@ vec.buf)) index) num)
            (set! (aref (cast Uint32* (@ vec.buf)) index) num)))
 
-(define-cproc un8vector-set! (vec::<unvector> index::<int> num::<uint8>) ::<void>
+(define-cproc nn8vector-set! (vec::<nnvector> index::<int> num::<uint8>) ::<void>
   (set! (aref (cast Uint8* (@ vec.buf)) index) num))
 
-(define-cproc un16vector-set! (vec::<unvector> index::<int> num::<uint16>) ::<void>
+(define-cproc nn16vector-set! (vec::<nnvector> index::<int> num::<uint16>) ::<void>
   (set! (aref (cast Uint16* (@ vec.buf)) index) num))
 
-(define-cproc un32vector-set! (vec::<unvector> index::<int> num::<uint32>) ::<void>
+(define-cproc nn32vector-set! (vec::<nnvector> index::<int> num::<uint32>) ::<void>
   (set! (aref (cast Uint32* (@ vec.buf)) index) num))
 
-(define-cproc unvector-ref (vec::<unvector> index::<int>) :: <top>
+(define-cproc nnvector-ref (vec::<nnvector> index::<int> :optional fallback) :: <top>
+  :fast-flonum
+  (setter nnvector-set!)
   (un-case (ref vec type)
            (result (boxing (aref (cast Uint8* (@ vec.buf)) index) <uint8>))
            (result (boxing (aref (cast Uint16* (@ vec.buf)) index) <uint16>))
            (result (boxing (aref (cast Uint32* (@ vec.buf)) index) <uint32>))))
 
-(define-cproc un8vector-ref (vec::<unvector> index::<int>) ::<uint8>
+(define-cproc nn8vector-ref (vec::<nnvector> index::<int> :optional fallback) ::<uint8>
   (result (aref (cast Uint8* (@ vec.buf)) index)))
 
-(define-cproc un16vector-ref (vec::<unvector> index::<int>) ::<uint16>
+(define-cproc nn16vector-ref (vec::<nnvector> index::<int> :optional fallback) ::<uint16>
   (result (aref (cast Uint16* (@ vec.buf)) index)))
 
-(define-cproc un32vector-ref (vec::<unvector> index::<int>) ::<uint32>
+(define-cproc nn32vector-ref (vec::<nnvector> index::<int> :optional fallback) ::<uint32>
   (result (aref (cast Uint32* (@ vec.buf)) index)))
 
 
+(define-cproc nnvector->list (vec::<nnvector> 
+                               :optional (start::<fixnum> 0) (end::<fixnum> -1)) :: <list>
+  (let* ([len :: int (NNVECTOR_SIZE2LENGTH (@ vec.type) (@ vec.size))])
+    (SCM_CHECK_START_END start end len)
+    (let* ([i :: int (- end 1)]
+           [c :: ScmObj SCM_NIL])
+      (un-case (ref vec type)
+        (for [() (>= i start) (pre-- i)]
+             (set! c (Scm_Cons (boxing (aref (cast Uint8* (@ vec.buf)) i) <uint8>) c)))
+        (for [() (>= i start) (pre-- i)]
+             (set! c (Scm_Cons (boxing (aref (cast Uint16* (@ vec.buf)) i) <uint16>) c)))
+        (for [() (>= i start) (pre-- i)]
+             (set! c (Scm_Cons (boxing (aref (cast Uint32* (@ vec.buf)) i) <uint32>) c))))
+      (result c))))
+
+(define-cproc nnvector->vector (vec::<nnvector>
+                                 :optional (start::<fixnum> 0) (end::<fixnum> -1)) :: <top>
+  (let* ([len :: int (NNVECTOR_SIZE2LENGTH (@ vec.type) (@ vec.size))])
+    (SCM_CHECK_START_END start end len)
+    (let* ([i :: int start]
+           [v :: ScmObj (Scm_MakeVector (- end start) SCM_NIL)])
+      (un-case (ref vec type)
+        (for [() (< i end) (pre++ i)]
+             (set! (SCM_VECTOR_ELEMENT v i) (boxing (aref (cast Uint8* (@ vec.buf)) i) <uint8>)))
+        (for [() (< i end) (pre++ i)]
+             (set! (SCM_VECTOR_ELEMENT v i) (boxing (aref (cast Uint16* (@ vec.buf)) i) <uint16>)))
+        (for [() (< i end) (pre++ i)]
+             (set! (SCM_VECTOR_ELEMENT v i) (boxing (aref (cast Uint32* (@ vec.buf)) i) <uint32>))))
+      (result v))))
+
+(define-cproc nnvector->uvector (vec::<nnvector>
+                                  :optional (start::<fixnum> 0) (end::<fixnum> -1)) :: <top>
+  (let* ([len :: int (NNVECTOR_SIZE2LENGTH (@ vec.type) (@ vec.size))])
+    (SCM_CHECK_START_END start end len)
+    (let* ([i :: int start]
+           [v :: ScmObj])
+      (un-case (ref vec type)
+        (begin
+          (set! v (Scm_MakeU8Vector (- end start) 0))
+          (for [() (< i end) (pre++ i)]
+               (set! (SCM_U8VECTOR_ELEMENT v i) (aref (cast Uint8* (@ vec.buf)) i))))
+        (begin
+          (set! v (Scm_MakeU16Vector (- end start) 0))
+          (for [() (< i end) (pre++ i)]
+               (set! (SCM_U16VECTOR_ELEMENT v i) (aref (cast Uint16* (@ vec.buf)) i))))
+        (begin
+          (set! v (Scm_MakeU32Vector (- end start) 0))
+          (for [() (< i end) (pre++ i)]
+               (set! (SCM_U32VECTOR_ELEMENT v i) (aref (cast Uint32* (@ vec.buf)) i)))))
+      (result v))))
+
+(define-cproc nnvector->uvector-shared (vec::<nnvector>) :: <top>
+  (let* ([len :: int (NNVECTOR_SIZE2LENGTH (@ vec.type) (@ vec.size))])
+    (let* ([v :: ScmObj])
+      (un-case (ref vec type)
+        (set! v (Scm_MakeU8VectorFromArrayShared len (cast Uint8* (@ vec.buf))))
+        (set! v (Scm_MakeU16VectorFromArrayShared len (cast Uint16* (@ vec.buf))))
+        (set! v (Scm_MakeU32VectorFromArrayShared len (cast Uint32* (@ vec.buf)))))
+      (result v))))
+
+(define-cproc uvector->nnvector (uv
+                                  :optional (start::<fixnum> 0) (end::<fixnum> -1)) :: <top>
+  (let* ([len :: int (SCM_UVECTOR_SIZE uv)])
+    (SCM_CHECK_START_END start end len)
+    (let* ([i :: int start]
+           [v :: nnvector])
+      (case (Scm_UVectorType (SCM_CLASS_OF uv))
+        [(SCM_UVECTOR_U8) 
+         (set! (@ v.size) (- end start))
+         (set! (@ v.buf) (SCM_NEW_ARRAY Uint8 (@ v.size)))
+         (set! (@ v.type) TYPE_U8)
+         (for [() (< i end) (pre++ i)]
+              (set! (aref (cast Uint8* (@ v.buf)) i)(SCM_U8VECTOR_ELEMENT uv i)))]
+        [(SCM_UVECTOR_U16) 
+         (set! (@ v.size) (* (- end start) 2))
+         (set! (@ v.buf) (SCM_NEW_ARRAY Uint8 (@ v.size)))
+         (set! (@ v.type) TYPE_U16)
+         (for [() (< i end) (pre++ i)]
+              (set! (aref (cast Uint16* (@ v.buf)) i)(SCM_U16VECTOR_ELEMENT uv i)))]
+        [(SCM_UVECTOR_U32) 
+         (set! (@ v.size) (* (- end start) 4))
+         (set! (@ v.buf) (SCM_NEW_ARRAY Uint8 (@ v.size)))
+         (set! (@ v.type) TYPE_U32)
+         (for [() (< i end) (pre++ i)]
+              (set! (aref (cast Uint32* (@ v.buf)) i)(SCM_U32VECTOR_ELEMENT uv i)))]
+        [else (Scm_Error "type mismatch")])
+      (result (boxing v <nnvector>)))))
+
+(define-cproc uvector->nnvector-shared (uv::<uvector>) :: <top>
+  (let* ([len :: int (SCM_UVECTOR_SIZE uv)])
+    (let* ([v :: nnvector])
+      (case (Scm_UVectorType (SCM_CLASS_OF uv))
+        [(SCM_UVECTOR_U8) 
+         (set! (@ v.size) len)
+         (set! (@ v.buf) (cast Uint8* (SCM_U8VECTOR_ELEMENTS uv)))
+         (set! (@ v.type) TYPE_U8)]
+        [(SCM_UVECTOR_U16) 
+         (set! (@ v.size) (* len 2))
+         (set! (@ v.buf) (cast Uint8* (SCM_U16VECTOR_ELEMENTS uv)))
+         (set! (@ v.type) TYPE_U16)]
+        [(SCM_UVECTOR_U32) 
+         (set! (@ v.size) (* len 4))
+         (set! (@ v.buf) (cast Uint8* (SCM_U32VECTOR_ELEMENTS uv)))
+         (set! (@ v.type) TYPE_U32)]
+        [else (Scm_Error "type mismatch")])
+      (result (boxing v <nnvector>)))))
+
 "
-#define SET_UNVECTOR_DATA(obj, v_buf, v_type, v_size) \
+#define SET_NNVECTOR_DATA(obj, v_buf, v_type, v_size) \
 do {\
-  SCM_UNVECTOR_DATA(obj).buf = (v_buf); \
-  SCM_UNVECTOR_DATA(obj).size = (v_size);  \
-  SCM_UNVECTOR_DATA(obj).type  = (v_type);  \
+  SCM_NNVECTOR_DATA(obj).buf = (v_buf); \
+  SCM_NNVECTOR_DATA(obj).size = (v_size);  \
+  SCM_NNVECTOR_DATA(obj).type  = (v_type);  \
 }while(0)
 
 "
@@ -300,13 +415,13 @@ do {\
                :c-name "dst_format")
    (rate-incr :type <real>
               :c-name "rate_incr")
-   (buf :type <unvector>
+   (buf :type <nnvector>
         :getter "
-        unvector vec;
+        nnvector vec;
         vec.buf = obj->buf;
-        vec.size = obj->len;
         vec.type = TYPE_U8;
-        return SCM_MAKE_UNVECTOR(vec);
+        vec.size = obj->len;
+        return SCM_MAKE_NNVECTOR(vec);
         "
         :setter #f)
    (len :type <int>
@@ -332,7 +447,7 @@ do {\
 ;;;;;
 ;; util function
 ;; Allocates a new buffer and copy
-(define-cproc sdl-copy-audio-cvt-buf (cvt::<sdl-audio-cvt> vec::<unvector>) :: <void>
+(define-cproc sdl-copy-audio-cvt-buf (cvt::<sdl-audio-cvt> vec::<nnvector>) :: <void>
   (set! (@ cvt->buf) (SCM_NEW_ARRAY Uint8 (* (@ cvt->len-mult) (@ vec.size))))
   (set! (@ cvt->len) (@ vec.size))
   (memcpy (@ cvt->buf) (@ vec.buf) (@ vec.size)))
@@ -355,7 +470,7 @@ ScmVM* Scm_AudioVM;
     (when (@ data->first-call?)
       (Scm_AttachVM Scm_AudioVM)
       (set! (@ data->first-call?) 0))
-    (SET_UNVECTOR_DATA (@ data->vector) stream TYPE_U8 len)
+    (SET_NNVECTOR_DATA (@ data->vector) stream TYPE_U8 len)
     (if (== 1 (SCM_PROCEDURE_REQUIRED (@ data->callback)))
       (Scm_ApplyRec1 (SCM_OBJ (@ data->callback))
                      (SCM_OBJ (@ data->vector)))
@@ -384,8 +499,8 @@ ScmVM* Scm_AudioVM;
     (set! Scm_AudioVM (Scm_NewVM (Scm_VM) (boxing "audio" <const-cstring>))))
   ;;setting callback data
   (let* ([data :: OpenAudioData* (SCM_NEW OpenAudioData)]
-         [vec :: unvector])
-    (set! (@ data->vector) (boxing vec <unvector>))
+         [vec :: nnvector])
+    (set! (@ data->vector) (boxing vec <nnvector>))
     (set! (@ data->callback) (@ desired->callback))
     (set! (@ data->userdata) (@ desired->userdata))
     (set! (@ data->first-call?) 1)
@@ -425,7 +540,7 @@ ScmVM* Scm_AudioVM;
   (SDL_PauseAudio pause-on))
 
 (define-cfn scm-finalize-wav-buffer (obj::ScmObj data::void*) :: void
-  (let* ([o :: Scmunvector* (SCM_UNVECTOR obj)])
+  (let* ([o :: Scmnnvector* (SCM_NNVECTOR obj)])
     (SDL_FreeWAV (@ o->data.buf))))
 
 ;;;;;
@@ -434,14 +549,14 @@ ScmVM* Scm_AudioVM;
   (let* ([wrapper::SDL_AudioSpecWrapper* (SCM_NEW SDL_AudioSpecWrapper)]
          [buffer::Uint8*]
          [len::Uint32]
-         [vec::unvector]
+         [vec::nnvector]
          [scm-vec::ScmObj])
     (if (zero? (SDL_LoadWAV file (& (@ wrapper->audio)) (& buffer) (& len)))
       (raise-sdl-error sdl-load-wav))
     (set! (@ vec.buf) buffer)
     (set! (@ vec.size) len)
     (set! (@ vec.type) TYPE_U8)
-    (set! scm-vec (boxing vec <unvector>))
+    (set! scm-vec (boxing vec <nnvector>))
     (Scm_RegisterFinalizer scm-vec scm-finalize-wav-buffer 0)
     (result wrapper scm-vec)))
 
@@ -481,7 +596,7 @@ ScmVM* Scm_AudioVM;
 ;; The volume ranges from 0 - 128, and should be set to SDL_MIX_MAXVOLUME
 ;; for full audio volume.  Note this does not change hardware volume.
 ;; This is provided for convenience -- you can mix your own audio data.
-(define-cproc sdl-mix-audio (dst::<unvector> src::<unvector> len::<uint32> volume::<int>
+(define-cproc sdl-mix-audio (dst::<nnvector> src::<nnvector> len::<uint32> volume::<int>
                              :optional (src-offset::<int> 0))::<void>
   (SDL_MixAudio (@ dst.buf) (+ (@ src.buf) src-offset) len volume))
 
@@ -1900,7 +2015,7 @@ ScmVM* Scm_AudioVM;
         (SDL_SetError "Cant't read in this kind of RWOps")
         (return -1))
       (begin
-        (SET_UNVECTOR_DATA (@ wrapper->vector) ptr TYPE_U8 (* size maxnum))
+        (SET_NNVECTOR_DATA (@ wrapper->vector) ptr TYPE_U8 (* size maxnum))
         (return (unboxing (Scm_ApplyRec4
                             (SCM_OBJ (@ wrapper->read))
                             (SCM_OBJ obj)
@@ -1917,7 +2032,7 @@ ScmVM* Scm_AudioVM;
         (SDL_SetError "Cant't write in this kind of RWOps")
         (return -1))
       (begin
-        (SET_UNVECTOR_DATA (@ wrapper->vector) (cast void* ptr) TYPE_U8 (* size maxnum))
+        (SET_NNVECTOR_DATA (@ wrapper->vector) (cast void* ptr) TYPE_U8 (* size maxnum))
         (return (unboxing (Scm_ApplyRec4
                             (SCM_OBJ (@ wrapper->write))
                             (SCM_OBJ obj)
@@ -1995,10 +2110,10 @@ ScmVM* Scm_AudioVM;
       [(is-type? mem <u32vector>)
        (set! size (* 4 (SCM_U8VECTOR_SIZE mem)))
        (set! buf (SCM_U32VECTOR_ELEMENTS mem))]
-      [(is-type? mem <unvector>)
-       (set! size (ref (unboxing mem <unvector>) size))
-       (set! buf (ref (unboxing mem <unvector>) buf))]
-      [else (Scm_Error "<u8vector> or <u16vector> or <u32vecotr> or <unvector> required, but got %S" mem)])
+      [(is-type? mem <nnvector>)
+       (set! size (ref (unboxing mem <nnvector>) size))
+       (set! buf (ref (unboxing mem <nnvector>) buf))]
+      [else (Scm_Error "<u8vector> or <u16vector> or <u32vecotr> or <nnvector> required, but got %S" mem)])
     (result (SDL_RWFromMem buf size))))
 
 (define-cproc sdl-free-rw (area::<top>) :: <void>
@@ -2035,12 +2150,12 @@ ScmVM* Scm_AudioVM;
     (ENSURE_NOT_NULL ctx-data)
     (result (SDL_RWtell ctx-data))))
 
-(define-cproc sdl-rw-read (ctx::<top> size::<int> n::<int>) :: <unvector>
+(define-cproc sdl-rw-read (ctx::<top> size::<int> n::<int>) :: <nnvector>
   (let* ([ctx-data :: SDL_RWops*])
     (set-ctx-data ctx-data ctx)
     (ENSURE_NOT_NULL ctx-data)
     (let* ([buffer :: char* (SCM_NEW_ARRAY _char_t (* size n))]
-           [vec :: unvector]
+           [vec :: nnvector]
            [result :: int (SDL_RWread ctx-data buffer size n)])
       (if (< result 0)
         (raise-sdl-error sdl-rw-read)
@@ -2056,8 +2171,8 @@ ScmVM* Scm_AudioVM;
     (ENSURE_NOT_NULL ctx-data)
     (let* ([ptr-data :: void*])
       (cond
-        [(is-type? ptr <unvector>)
-         (set! ptr-data (ref (unboxing ptr <unvector>) buf))]
+        [(is-type? ptr <nnvector>)
+         (set! ptr-data (ref (unboxing ptr <nnvector>) buf))]
         [(is-type? ptr <u8vector>)
          (set! ptr-data (SCM_U8VECTOR_ELEMENTS ptr))])
       (result (SDL_RWwrite ctx-data ptr-data size n)))))
@@ -2267,11 +2382,11 @@ static ScmVM* Scm_TimerVM;
       :setter #f)
    (pitch :type <uint16>
           :setter #f)
-   (pixels :type <unvector>
+   (pixels :type <nnvector>
            :setter #f
            :getter "
-           unvector vec = {obj->pixels, obj->pitch, TYPE_U8};
-           return Scm_Makeunvector(vec);
+           nnvector vec = {obj->pixels, obj->pitch, TYPE_U8};
+           return Scm_Makennvector(vec);
            ")
   (clip-rect :type <sdl-rect>
              :setter #f)
@@ -2361,8 +2476,8 @@ static ScmVM* Scm_TimerVM;
             )
    )
 
-(define-cproc sdl-overlay-pixels (overlay::<sdl-overlay> plane::<int>) :: <unvector>
-  (let* ([vec :: unvector])
+(define-cproc sdl-overlay-pixels (overlay::<sdl-overlay> plane::<int>) :: <nnvector>
+  (let* ([vec :: nnvector])
     (set! (@ vec.buf) (aref (@ overlay->pixels) plane))
     (set! (@ vec.type) TYPE_U8)
     (set! (@ vec.size) (aref (@ overlay->pitches) plane))

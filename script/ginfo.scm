@@ -435,6 +435,20 @@
                 ""))
             (lambda (text config unit) (undefined)))
 
+;;define @@class-c->scm
+;;@@class-c->scm stubファイル用.Cレベルのクラス名とGaucheレベルのクラス名を関連付ける
+;;format: c-class-name scm-class-name
+(define-tag @class-c->scm
+            tag-allow-multiple-ret-true
+            (lambda (first-line config unit)
+              (let ([c-scm (string-split first-line #[\s])])
+                (unless (eq? (length c-scm) 2)
+                  (raise (condition (<geninfo-warning>
+                                      (message "@@class-c->scm tag format is ''c-class-name scm-class-name''.")))))
+                (put-class-c->scm config (car c-scm) (cadr c-scm)))
+              "")
+            (lambda (text config unit) (undefined)))
+
 
 ;;次の有効なドキュメントテキストを取得する
 ;;有効なドキュメントテキストがなければ#fを返す
@@ -730,6 +744,16 @@
         ((assq-ref  analyzable-symbols (car exp)) exp config unit))))
   unit)
 
+(define (put-class-c->scm config c-name scm-name)
+  (let-values ([(classes new-create?) (cond
+                                        [(get-config config 'stub-class) 
+                                         => (cut values <> #f)]
+                                        [else (values (make-hash-table 'string=?) #t)])])
+    (hash-table-put! classes c-name scm-name)
+    (if new-create?
+      (set-config config 'stub-class classes))))
+
+
 ;;解析しようとしているファイルが.stubであれば事前解析を行う
 ;;Cレベルのクラス名とGaucheレベルのクラス名の対応を取っておく
 (define (pre-parse-stub config)
@@ -778,6 +802,13 @@
   (port-seek (current-input-port) (- (+ (string-size line) 
                                         newline-size)) SEEK_CUR))
 
+(define (cmd-type-unit? unit)
+  (if (and (slot-ref unit 'type) (equal? (slot-ref unit 'type) type-cmd))
+    #f
+    unit))
+
+
+
 (define (read-all-doc filename)
   (let ([doc (make <doc>)]
         [config (make-hash-table)]
@@ -801,7 +832,10 @@
                (unless (initial-state? cur-unit)
                  (add-unit doc config (commit-unit config cur-unit))
                  (set! cur-unit (make <unit-bottom>)))
-               (set! cur-unit (parse-doc config cur-unit))]
+               (cond
+                 [(cmd-type-unit? (parse-doc config cur-unit))
+                  => (cut set! cur-unit <>)]
+                 [else (set! cur-unit (make <unit-bottom>))])]
             ))
           read-line)))
     (commit-doc doc)))

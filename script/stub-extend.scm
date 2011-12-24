@@ -16,6 +16,7 @@
    (compare    :init-keyword :compare   :init-value #f)
    (slot-spec  :init-keyword :slot-spec :init-value '())
    (direct-supers :init-keyword :direct-supers :init-value '())
+   (meta        :init-keyword :meta :init-value #f)
    ))
 
 (instance-pool-remove! <form-parser>
@@ -35,11 +36,13 @@
               (printer   (cond ((assq 'printer more) => cadr) (else #f)))
               (compare   (cond ((assq 'compare more) => cadr) (else #f)))
               (dsupers   (cond ((assq 'direct-supers more) => cdr) (else '())))
+              (meta      (cond ((assq 'meta more) => cadr) (else #f)))
               (cclass (make <cclass>
                         :scheme-name scm-name :c-type c-type :c-name c-name
                         :qualifiers quals
                         :cpa cpa :direct-supers dsupers
-                        :allocator allocator :printer printer :compare compare)))
+                        :allocator allocator :printer printer :compare compare
+                        :meta meta)))
          (set! (~ cclass'slot-spec) (process-cclass-slots cclass slot-spec))
          (cgen-add! cclass))])))
 
@@ -83,9 +86,16 @@
   )
 
 (define-method cgen-emit-init ((self <cclass>))
-  ;;modification
-  ;(p "  Scm_InitBuiltinClass(&"(~ self'c-name)", \""(~ self'scheme-name)"\", "(c-slot-spec-name self)", TRUE, mod);")
-  (p "  Scm_InitBuiltinClass(&"(~ self'c-name)", \""(~ self'scheme-name)"\", "(c-slot-spec-name self)", FALSE, mod);")
+  (cond 
+    [(eq? #f (~ self 'meta))
+     (p "  Scm_InitBuiltinClass(&"(~ self'c-name)", \""(~ self'scheme-name)"\", "(c-slot-spec-name self)", FALSE, mod);")]
+    [(eq? #t (~ self 'meta))
+     (p "  Scm_InitStaticClassWithMeta(&"(~ self'c-name)", \""(~ self'scheme-name)"\", mod, NULL, SCM_FALSE, " (c-slot-spec-name self)", 0);")]
+    [(string? (~ self 'meta))
+     (p "  Scm_InitStaticClassWithMeta(&"(~ self'c-name)", \""(~ self'scheme-name)"\", mod, NULL, " (~ self'meta) ", " (c-slot-spec-name self)", 0);")]
+    [else 
+      (error <cgen-stub-error> "illegal meta. string or #f or #t required.")])
+  
   ;; adjust direct-supers if necessary
   (let1 ds (~ self'direct-supers)
     (when (not (null? ds))

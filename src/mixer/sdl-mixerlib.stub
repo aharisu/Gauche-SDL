@@ -14,11 +14,11 @@
 #define TYPE_U8 1
 #define TYPE_U16 2
 #define TYPE_U32 4
-#define SET_UNVECTOR_DATA(obj, v_buf, v_type, v_size) \
+#define SET_NNVECTOR_DATA(obj, v_buf, v_type, v_size) \
 do {\
-  SCM_UNVECTOR_DATA(obj).buf = (v_buf); \
-  SCM_UNVECTOR_DATA(obj).size = (v_size);  \
-  SCM_UNVECTOR_DATA(obj).type  = (v_type);  \
+  SCM_NNVECTOR_DATA(obj).buf = (v_buf); \
+  SCM_NNVECTOR_DATA(obj).size = (v_size);  \
+  SCM_NNVECTOR_DATA(obj).type  = (v_type);  \
 }while(0)
 "
 
@@ -69,13 +69,13 @@ do {\
   ()
   (
    (volume :type <uint8>)
-   (abuf :type <unvector>
+   (abuf :type <nnvector>
          :getter "
-         unvector vec;
+         nnvector vec;
          vec.buf = obj->abuf;
          vec.size = obj->alen;
          vec.type = 1;
-         return SCM_MAKE_UNVECTOR(vec);
+         return SCM_MAKE_NNVECTOR(vec);
          "
          :setter #f)
    )
@@ -200,8 +200,8 @@ static ScmObj post_mix_vec;
 __attribute__((constructor))
 static void init_post_mix_vec()
 {
-  unvector vec;
-  post_mix_vec = SCM_MAKE_UNVECTOR(vec);
+  nnvector vec;
+  post_mix_vec = SCM_MAKE_NNVECTOR(vec);
 }
 "
 
@@ -215,7 +215,7 @@ static void init_post_mix_vec()
 
 (define-cfn post-mix-callback (udata::void* stream::Uint8* len::int) :: void
   (check-attach-vm)
-  (SET_UNVECTOR_DATA post-mix-vec stream TYPE_U8 len)
+  (SET_NNVECTOR_DATA post-mix-vec stream TYPE_U8 len)
   (if (== 1 (SCM_PROCEDURE_REQUIRED post-mix-func))
     (Scm_ApplyRec1 (SCM_OBJ post-mix-func)
                    post-mix-vec)
@@ -328,7 +328,7 @@ static void mix_effect_func_##num(int chan, void* stream, int len, void* u_data)
     Scm_AttachVM(Scm_AudioVM);\
   }\
 \
-  SET_UNVECTOR_DATA(data->vector, stream, TYPE_U8, len);\
+  SET_NNVECTOR_DATA(data->vector, stream, TYPE_U8, len);\
   if(SCM_PROCEDURE_REQUIRED(data->callback) == 2) {\
     Scm_ApplyRec2(SCM_OBJ(data->callback),\
       Scm_MakeInteger(chan),\
@@ -396,7 +396,7 @@ __attribute__((constructor))
 static void init_effect_data()
 {
   int i;
-  unvector vec;
+  nnvector vec;
   effect_data_lock = SDL_CreateMutex();
 
   effect_data_slot[0].c_callback = mix_effect_func_1;
@@ -462,7 +462,7 @@ static void init_effect_data()
   effect_data_slot[29].c_done = mix_effect_done_30;
 
   for(i = 0;i < NUM_EFFECT_CALLBACK;++i) {
-    effect_data_slot[i].vector = SCM_MAKE_UNVECTOR(vec);
+    effect_data_slot[i].vector = SCM_MAKE_NNVECTOR(vec);
   }
 }
 

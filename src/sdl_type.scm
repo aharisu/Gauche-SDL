@@ -10,7 +10,7 @@
               (cgen-extern "#include<SDL/SDL.h>")
               (cgen-extern "")
               (cgen-extern "
-                           struct Scmunvector;
+                           struct Scmnnvector;
 
                            typedef struct SDL_AudioSpecWrapperRec {
                             SDL_AudioSpec audio;
@@ -18,11 +18,11 @@
                             ScmObj userdata;
                            }SDL_AudioSpecWrapper;
 
-                           typedef struct unvectorRec {
+                           typedef struct nnvectorRec {
                             Uint8* buf;
                             unsigned int size;
                             int type;
-                           }unvector;
+                           }nnvector;
 
                            typedef struct SDL_RWopsWrapperRec {
                             SDL_RWops ops;
@@ -55,7 +55,7 @@
   '(
     (SDL_AudioSpecWrapper <sdl-audio-spec> #t #f "")
     (SDL_AudioCVT <sdl-audio-cvt> #t #f "")
-    (unvector <unvector> #f #f "")
+    (nnvector <nnvector> #f #f "")
     (SDL_CDtrack <sdl-cd-track> #f #f "")
     (SDL_CD <sdl-cd> #t #f "")
     (SDL_keysym <sdl-keysym> #f #f "")
