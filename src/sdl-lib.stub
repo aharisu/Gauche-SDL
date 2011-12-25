@@ -1196,11 +1196,25 @@ ScmVM* Scm_AudioVM;
 ;;  1     0       Inverted color if possible, black if not.
 ;;
 ;; Cursors created with this function must be freed with sdl-free-cursor.
-(define-cproc sdl-create-cursor (data::<u8vector> mask::<u8vector>
+(define-cproc sdl-create-cursor (data::<top> mask::<top>
                                  w::<int> h::<int> hot-x::<int> hot-y::<int>) :: <sdl-cursor>
-  (result (SDL_CreateCursor (SCM_U8VECTOR_ELEMENTS data) 
-                            (SCM_U8VECTOR_ELEMENTS mask)
-                            w h hot-x hot-y)))
+  (let* ([data-ptr :: Uint8*]
+         [mask-ptr :: Uint8*])
+    (cond
+      [(is-type? data <u8vector>)
+       (set! data-ptr (SCM_U8VECTOR_ELEMENTS 
+                         (unboxing data <u8vector>)))]
+      [(is-type? data <nnvector>)
+       (set! data-ptr (ref (unboxing data <nnvector>) buf))]
+      [else (Scm_Error "the 1st arguments requires a <u8vector> or <nnvector> or #f, but got %S" data)])
+    (cond
+      [(is-type? mask <u8vector>)
+       (set! mask-ptr (SCM_U8VECTOR_ELEMENTS 
+                         (unboxing mask <u8vector>)))]
+      [(is-type? mask <nnvector>)
+       (set! mask-ptr (ref (unboxing mask <nnvector>) buf))]
+      [else (Scm_Error "the 2nd arguments requires a <u8vector> or <nnvector> or #f, but got %S" mask)])
+    (result (SDL_CreateCursor data-ptr mask-ptr w h hot-x hot-y))))
 
 ;;;;;
 ;; Set the currently active cursor to the specified one.
@@ -2101,19 +2115,13 @@ ScmVM* Scm_AudioVM;
   (let* ([buf::void*]
          [size::int])
     (cond
-      [(is-type? mem <u8vector>)
-       (set! size (SCM_U8VECTOR_SIZE mem))
-       (set! buf (SCM_U8VECTOR_ELEMENTS mem))]
-      [(is-type? mem <u16vector>)
-       (set! size (* 2 (SCM_U8VECTOR_SIZE mem)))
-       (set! buf (SCM_U16VECTOR_ELEMENTS mem))]
-      [(is-type? mem <u32vector>)
-       (set! size (* 4 (SCM_U8VECTOR_SIZE mem)))
-       (set! buf (SCM_U32VECTOR_ELEMENTS mem))]
+      [(is-type? mem <uvector>)
+       (set! size (Scm_UVectorSizeInBytes (unboxing mem <uvector>)))
+       (set! buf (SCM_UVECTOR_ELEMENTS mem))]
       [(is-type? mem <nnvector>)
        (set! size (ref (unboxing mem <nnvector>) size))
        (set! buf (ref (unboxing mem <nnvector>) buf))]
-      [else (Scm_Error "<u8vector> or <u16vector> or <u32vecotr> or <nnvector> required, but got %S" mem)])
+      [else (Scm_Error "<uvector> or <nnvector> required, but got %S" mem)])
     (result (SDL_RWFromMem buf size))))
 
 (define-cproc sdl-free-rw (area::<top>) :: <void>
@@ -2173,8 +2181,9 @@ ScmVM* Scm_AudioVM;
       (cond
         [(is-type? ptr <nnvector>)
          (set! ptr-data (ref (unboxing ptr <nnvector>) buf))]
-        [(is-type? ptr <u8vector>)
-         (set! ptr-data (SCM_U8VECTOR_ELEMENTS ptr))])
+        [(is-type? ptr <uvector>)
+         (set! ptr-data (SCM_UVECTOR_ELEMENTS ptr))]
+        [else (Scm_Error "the 2nd arguments requires a <uvector> or <nnvector>, but got %S" ptr)])
       (result (SDL_RWwrite ctx-data ptr-data size n)))))
 
 (define-cproc sdl-rw-close (ctx::<top>) :: <int>
@@ -2891,13 +2900,21 @@ static ScmVM* Scm_TimerVM;
     (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
     (result ret)))
 
-(define-cproc sdl-create-rgb-surface-from (pixels::<u8vector> width::<int> height::<int> depth::<int> pitch::<int>
+(define-cproc sdl-create-rgb-surface-from (pixels::<top> width::<int> height::<int> depth::<int> pitch::<int>
                                                               r-mask::<uint32> g-mask::<uint32> b-mask::<uint32> a-mask::<uint32>) :: <top>
-  (let* ([ret :: ScmObj (boxing 
-                          (SDL_CreateRGBSurfaceFrom (SCM_U8VECTOR_ELEMENTS pixels) width height depth pitch r-mask g-mask b-mask a-mask) 
-                          <sdl-surface>)])
-    (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
-    (result ret)))
+  (let* ([pixels-data :: Uint8*])
+    (cond
+      [(is-type? pixels <u8vector>)
+       (set! pixels-data (SCM_U8VECTOR_ELEMENTS 
+                         (unboxing pixels <u8vector>)))]
+      [(is-type? pixels <nnvector>)
+       (set! pixels-data (ref (unboxing pixels <nnvector>) buf))]
+      [else (Scm_Error "the 1st arguments requires a <u8vector> or <nnvector>, but got %S" pixels)])
+    (let* ([ret :: ScmObj (boxing 
+                            (SDL_CreateRGBSurfaceFrom pixels-data width height depth pitch r-mask g-mask b-mask a-mask) 
+                            <sdl-surface>)])
+      (Scm_RegisterFinalizer ret scm-finalize-sdl-surface 0)
+      (result ret))))
 
 (define-cproc sdl-free-surface (surface::<sdl-surface>) :: <void>
   (when surface
@@ -3325,7 +3342,9 @@ static ScmVM* Scm_TimerVM;
       [(is-type? mask <u8vector>)
        (set! mask-data (SCM_U8VECTOR_ELEMENTS 
                          (unboxing mask <u8vector>)))]
-      [else (Scm_Error "the 2nd arguments requires a <u8vector> or #f, but got %S" mask)])
+      [(is-type? mask <nnvector>)
+       (set! mask-data (ref (unboxing mask <nnvector>) buf))]
+      [else (Scm_Error "the 2nd arguments requires a <u8vector> or <nnvector> or #f, but got %S" mask)])
     (SDL_WM_SetIcon icon mask-data)))
 
 ;;;;;
