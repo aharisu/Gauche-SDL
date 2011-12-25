@@ -35,23 +35,15 @@
 (define pos-x 0)
 (define pos-y 0)
 
-(define-macro (c-or . exprs)
-  (cond 
-    [(null? exprs) #f]
-    [(null? (cdr exprs)) `(not (zero? ,(car exprs)))]
-    [else (let ([tmp (gensym)])
-            `(let ([,tmp (not (zero? ,(car exprs)))])
-               (if ,tmp ,tmp (c-or . ,(cdr exprs)))))]))
-
 (define (update-input)
   (let ([keys (sdl-get-key-state)])
     (copy-input cur-input prev-input)
-    (input-left-set! cur-input (c-or (u8vector-ref keys SDLK_LEFT) (u8vector-ref keys SDLK_h)))
-    (input-up-set! cur-input (c-or (u8vector-ref keys SDLK_UP) (u8vector-ref keys SDLK_k)))
-    (input-right-set! cur-input (c-or (u8vector-ref keys SDLK_RIGHT) (u8vector-ref keys SDLK_l)))
-    (input-down-set! cur-input (c-or (u8vector-ref keys SDLK_DOWN) (u8vector-ref keys SDLK_j)))
-    (input-button1-set! cur-input (c-or (u8vector-ref keys SDLK_LSHIFT) (u8vector-ref keys SDLK_z)))
-    (input-button2-set! cur-input (c-or (u8vector-ref keys SDLK_LCTRL) (u8vector-ref keys SDLK_x)))))
+    (input-left-set! cur-input (or (ref keys SDLK_LEFT) (ref keys SDLK_h)))
+    (input-up-set! cur-input (or (ref keys SDLK_UP) (ref keys SDLK_k)))
+    (input-right-set! cur-input (or (ref keys SDLK_RIGHT) (ref keys SDLK_l)))
+    (input-down-set! cur-input (or (ref keys SDLK_DOWN) (ref keys SDLK_j)))
+    (input-button1-set! cur-input (or (ref keys SDLK_LSHIFT) (ref keys SDLK_z)))
+    (input-button2-set! cur-input (or (ref keys SDLK_LCTRL) (ref keys SDLK_x)))))
 
 (define (update)
   (update-input)

@@ -14,26 +14,46 @@
 ;; <nnvector>
 ;;--------------
 
-"
-#define TYPE_U8 1
-#define TYPE_U16 2
-#define TYPE_U32 4
-"
-(define-constant u8 1)
-(define-constant u16 2)
-(define-constant u32 4)
+(define-constant nn-u8 257)
+(define-constant nn-u16 258)
+(define-constant nn-u32 260)
+(define-constant nn-boolean 769)
 
-"
-#define NNVECTOR_LENGTH2SIZE(type, len) ((type) * (len))
-#define NNVECTOR_SIZE2LENGTH(type, size) ((size) / (type))
-"
-
-(define-cise-stmt (un-case type u8-stmt u16-stmt u32-stmt)
+(define-cise-stmt un-case
+  [(_ type u8-stmt u16-stmt u32-stmt ub-stmt)
   `(case ,type
-     [(1) ,u8-stmt]
-     [(2) ,u16-stmt]
-     [(4) ,u32-stmt]
-     [else (Scm_Error "type mismatch")]))
+     [(TYPE_U8) ,u8-stmt]
+     [(TYPE_U16) ,u16-stmt]
+     [(TYPE_U32) ,u32-stmt]
+     [(TYPE_BOOLEAN) ,ub-stmt]
+     [else (Scm_Error "type mismatch")])]
+  [(_ type obj val u8-stmt u16-stmt u32-stmt ub-stmt)
+  `(case ,type
+     [(TYPE_U8) 
+      (begin
+        (unless (is-type? ,obj <uint8>)
+          (Scm_Error "<uint8> required, but got %S." ,obj))
+        (set! ,val (unboxing ,obj <uint8>))
+        ,u8-stmt)]
+     [(TYPE_U16) 
+      (begin
+        (unless (is-type? ,obj <uint16>)
+          (Scm_Error "<uint16> required, but got %S." ,obj))
+        (set! ,val (unboxing ,obj <uint16>))
+        ,u16-stmt)]
+     [(TYPE_U32) 
+      (begin
+        (unless (is-type? ,obj <uint32>)
+          (Scm_Error "<uint32> required, but got %S." ,obj))
+        (set! ,val (unboxing ,obj <uint32>))
+        ,u32-stmt)]
+     [(TYPE_BOOLEAN)
+      (begin
+        (unless (is-type? ,obj <boolean>)
+          (Scm_Error "<boolean> required, but got %S." ,obj))
+        (set! ,val (unboxing ,obj <boolean>))
+        ,ub-stmt)]
+     [else (Scm_Error "type mismatch")])])
 
 ;;;;;
 ;; @type cmd
@@ -61,26 +81,35 @@
            nnvector* vec = &(SCM_NNVECTOR_DATA(obj));
            int len = NNVECTOR_SIZE2LENGTH(vec->type, vec->size);
 
-           Scm_Printf(port, \"#un%d(\", vec->type * 8);
+           if(vec->type == TYPE_BOOLEAN) {
+             Scm_Printf(port, \"#nnb(\");
+           } else {
+             Scm_Printf(port, \"#nn%d(\", (vec->type & NN_SIZE_MASK) * 8);
+           }
            switch(vec->type) {
-           case 1:
+           case TYPE_U8:
              for(i = 0;i < len - 1;++i) {
                    Scm_Printf(port, \"%u \", vec->buf[i]);
              }
              Scm_Printf(port, \"%u)\", vec->buf[i]);
              break;
-           case 2:
+           case TYPE_U16:
              for(i = 0;i < len - 1;++i) {
                    Scm_Printf(port, \"%u \", ((unsigned short*)vec->buf)[i]);
              }
              Scm_Printf(port, \"%u)\", ((unsigned short*)vec->buf)[i]);
             break;
-           case 4:
+           case TYPE_U32:
              for(i = 0;i < len - 1;++i) {
                    Scm_Printf(port, \"%u \", ((unsigned long*)vec->buf)[i]);
              }
              Scm_Printf(port, \"%u)\", ((unsigned long*)vec->buf)[i]);
             break;
+          case TYPE_BOOLEAN:
+             for(i = 0;i < len - 1;++i) {
+                   Scm_Printf(port, \"%s \", vec->buf[i] != 0 ? \"#t\" : \"#f\");
+             }
+             Scm_Printf(port, \"%s)\", vec->buf[i] != 0 ? \"#t\" : \"#f\");
            }
 
            ")
@@ -95,11 +124,13 @@
     (set! (@ vec.type) type)
     (result vec)))
 
-(define-cproc nnvector-set! (vec::<nnvector> index::<int> num::<uint32>) ::<void>
-  (un-case (ref vec type)
-           (set! (aref (cast Uint8* (@ vec.buf)) index) num)
-           (set! (aref (cast Uint16* (@ vec.buf)) index) num)
-           (set! (aref (cast Uint32* (@ vec.buf)) index) num)))
+(define-cproc nnvector-set! (vec::<nnvector> index::<int> num::<top>) ::<void>
+  (let* ([n :: int])
+    (un-case (ref vec type) num n
+           (set! (aref (cast Uint8* (@ vec.buf)) index) n)
+           (set! (aref (cast Uint16* (@ vec.buf)) index) n)
+           (set! (aref (cast Uint32* (@ vec.buf)) index) n)
+           (set! (aref (cast Uint8* (@ vec.buf)) index) n))))
 
 (define-cproc nn8vector-set! (vec::<nnvector> index::<int> num::<uint8>) ::<void>
   (set! (aref (cast Uint8* (@ vec.buf)) index) num))
@@ -110,13 +141,17 @@
 (define-cproc nn32vector-set! (vec::<nnvector> index::<int> num::<uint32>) ::<void>
   (set! (aref (cast Uint32* (@ vec.buf)) index) num))
 
+(define-cproc nnbvector-set! (vec::<nnvector> index::<int> b::<boolean>) ::<void>
+  (set! (aref (cast Uint8* (@ vec.buf)) index) b))
+
 (define-cproc nnvector-ref (vec::<nnvector> index::<int> :optional fallback) :: <top>
   :fast-flonum
   (setter nnvector-set!)
   (un-case (ref vec type)
            (result (boxing (aref (cast Uint8* (@ vec.buf)) index) <uint8>))
            (result (boxing (aref (cast Uint16* (@ vec.buf)) index) <uint16>))
-           (result (boxing (aref (cast Uint32* (@ vec.buf)) index) <uint32>))))
+           (result (boxing (aref (cast Uint32* (@ vec.buf)) index) <uint32>))
+           (result (boxing (aref (cast Uint8* (@ vec.buf)) index) <boolean>))))
 
 (define-cproc nn8vector-ref (vec::<nnvector> index::<int> :optional fallback) ::<uint8>
   (result (aref (cast Uint8* (@ vec.buf)) index)))
@@ -126,6 +161,9 @@
 
 (define-cproc nn32vector-ref (vec::<nnvector> index::<int> :optional fallback) ::<uint32>
   (result (aref (cast Uint32* (@ vec.buf)) index)))
+
+(define-cproc nnbvector-ref (vec::<nnvector> index::<int> :optional fallback) ::<boolean>
+  (result (aref (cast Uint8* (@ vec.buf)) index)))
 
 
 (define-cproc nnvector->list (vec::<nnvector> 
@@ -140,7 +178,9 @@
         (for [() (>= i start) (pre-- i)]
              (set! c (Scm_Cons (boxing (aref (cast Uint16* (@ vec.buf)) i) <uint16>) c)))
         (for [() (>= i start) (pre-- i)]
-             (set! c (Scm_Cons (boxing (aref (cast Uint32* (@ vec.buf)) i) <uint32>) c))))
+             (set! c (Scm_Cons (boxing (aref (cast Uint32* (@ vec.buf)) i) <uint32>) c)))
+        (for [() (>= i start) (pre-- i)]
+             (set! c (Scm_Cons (boxing (aref (cast Uint8* (@ vec.buf)) i) <boolean>) c))))
       (result c))))
 
 (define-cproc nnvector->vector (vec::<nnvector>
@@ -155,7 +195,9 @@
         (for [() (< i end) (pre++ i)]
              (set! (SCM_VECTOR_ELEMENT v i) (boxing (aref (cast Uint16* (@ vec.buf)) i) <uint16>)))
         (for [() (< i end) (pre++ i)]
-             (set! (SCM_VECTOR_ELEMENT v i) (boxing (aref (cast Uint32* (@ vec.buf)) i) <uint32>))))
+             (set! (SCM_VECTOR_ELEMENT v i) (boxing (aref (cast Uint32* (@ vec.buf)) i) <uint32>)))
+        (for [() (< i end) (pre++ i)]
+             (set! (SCM_VECTOR_ELEMENT v i) (boxing (aref (cast Uint8* (@ vec.buf)) i) <boolean>))))
       (result v))))
 
 (define-cproc nnvector->uvector (vec::<nnvector>
@@ -176,7 +218,11 @@
         (begin
           (set! v (Scm_MakeU32Vector (- end start) 0))
           (for [() (< i end) (pre++ i)]
-               (set! (SCM_U32VECTOR_ELEMENT v i) (aref (cast Uint32* (@ vec.buf)) i)))))
+               (set! (SCM_U32VECTOR_ELEMENT v i) (aref (cast Uint32* (@ vec.buf)) i))))
+        (begin
+          (set! v (Scm_MakeU8Vector (- end start) 0))
+          (for [() (< i end) (pre++ i)]
+               (set! (SCM_U8VECTOR_ELEMENT v i) (aref (cast Uint8* (@ vec.buf)) i)))))
       (result v))))
 
 (define-cproc nnvector->uvector-shared (vec::<nnvector>) :: <top>
@@ -185,7 +231,8 @@
       (un-case (ref vec type)
         (set! v (Scm_MakeU8VectorFromArrayShared len (cast Uint8* (@ vec.buf))))
         (set! v (Scm_MakeU16VectorFromArrayShared len (cast Uint16* (@ vec.buf))))
-        (set! v (Scm_MakeU32VectorFromArrayShared len (cast Uint32* (@ vec.buf)))))
+        (set! v (Scm_MakeU32VectorFromArrayShared len (cast Uint32* (@ vec.buf))))
+        (set! v (Scm_MakeU8VectorFromArrayShared len (cast Uint8* (@ vec.buf)))))
       (result v))))
 
 (define-cproc uvector->nnvector (uv
@@ -1126,10 +1173,14 @@ ScmVM* Scm_AudioVM;
 ;; (let ((keystate (sdl-get-key-state)))
 ;;   (if (not (zero? (u8vector-ref keystate SDLK_RETURN)))
 ;;      ;;return is pressed))
-(define-cproc sdl-get-key-state () :: <u8vector>
+(define-cproc sdl-get-key-state () :: <nnvector>
   (let* ([numkeys::int]
-         [states::Uint8* (SDL_GetKeyState (& numkeys))])
-    (result (cast ScmU8Vector* (Scm_MakeU8VectorFromArrayShared numkeys states)))))
+         [states::Uint8* (SDL_GetKeyState (& numkeys))]
+         [vec :: nnvector])
+    (set! (@ vec.size) numkeys)
+    (set! (@ vec.type) TYPE_BOOLEAN)
+    (set! (@ vec.buf) states)
+    (result vec)))
 
 ;;;;;
 ;; Get the current key modifier state

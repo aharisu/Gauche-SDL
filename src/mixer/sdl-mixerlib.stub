@@ -11,9 +11,6 @@
 (include "../macro.stub.header")
 
 "
-#define TYPE_U8 1
-#define TYPE_U16 2
-#define TYPE_U32 4
 #define SET_NNVECTOR_DATA(obj, v_buf, v_type, v_size) \
 do {\
   SCM_NNVECTOR_DATA(obj).buf = (v_buf); \
@@ -74,7 +71,7 @@ do {\
          nnvector vec;
          vec.buf = obj->abuf;
          vec.size = obj->alen;
-         vec.type = 1;
+         vec.type = TYPE_U8;
          return SCM_MAKE_NNVECTOR(vec);
          "
          :setter #f)

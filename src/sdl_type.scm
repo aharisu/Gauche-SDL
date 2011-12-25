@@ -8,6 +8,7 @@
             (lambda () ;;prologue
               (cgen-extern "//sdl header")
               (cgen-extern "#include<SDL/SDL.h>")
+              (cgen-extern "#include\"nnvector.h\"")
               (cgen-extern "")
               (cgen-extern "
                            struct Scmnnvector;
@@ -17,12 +18,6 @@
                             ScmClosure* callback;
                             ScmObj userdata;
                            }SDL_AudioSpecWrapper;
-
-                           typedef struct nnvectorRec {
-                            Uint8* buf;
-                            unsigned int size;
-                            int type;
-                           }nnvector;
 
                            typedef struct SDL_RWopsWrapperRec {
                             SDL_RWops ops;
