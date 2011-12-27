@@ -124,7 +124,8 @@ do {\
       (raise-gfx-error gfx-pixel-color))))
 
 (define-cproc gfx-pixel-rgba (dst::<sdl-surface> x::<int16> y::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (pixelRGBA dst x y r g b a))
     (raise-gfx-error gfx-pixel-rgba)))
@@ -140,7 +141,8 @@ do {\
       (raise-gfx-error gfx-hline-color))))
 
 (define-cproc gfx-hline-rgba (dst::<sdl-surface> x1::<int16> x2::<int16> y::<int16> 
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (hlineRGBA dst x1 x2 y r g b a))
     (raise-gfx-error gfx-hline-rgba)))
@@ -156,7 +158,8 @@ do {\
       (raise-gfx-error gfx-vline-color))))
 
 (define-cproc gfx-vline-rgba (dst::<sdl-surface> x1::<int16> x2::<int16> y::<int16> 
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (vlineRGBA dst x1 x2 y r g b a))
     (raise-gfx-error gfx-vline-rgba)))
@@ -172,7 +175,8 @@ do {\
       (raise-gfx-error gfx-rectangle-color))))
 
 (define-cproc gfx-rectangle-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (rectangleRGBA dst x1 y1 x2 y2 r g b a))
     (raise-gfx-error gfx-rectangle-rgba)))
@@ -188,7 +192,8 @@ do {\
       (raise-gfx-error gfx-box-color))))
 
 (define-cproc gfx-box-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (boxRGBA dst x1 y1 x2 y2 r g b a))
     (raise-gfx-error gfx-box-rgba)))
@@ -204,7 +209,8 @@ do {\
       (raise-gfx-error gfx-line-color))))
 
 (define-cproc gfx-line-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (lineRGBA dst x1 y1 x2 y2 r g b a))
     (raise-gfx-error gfx-line-rgba)))
@@ -220,7 +226,8 @@ do {\
       (raise-gfx-error gfx-aaline-color))))
 
 (define-cproc gfx-aaline-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (aalineRGBA dst x1 y1 x2 y2 r g b a))
     (raise-gfx-error gfx-aaline-rgba)))
@@ -236,7 +243,8 @@ do {\
       (raise-gfx-error gfx-circle-color))))
 
 (define-cproc gfx-circle-rgba (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (circleRGBA dst x y rad r g b a))
     (raise-gfx-error gfx-circle-rgba)))
@@ -253,7 +261,8 @@ do {\
       (raise-gfx-error gfx-arc-color))))
 
 (define-cproc gfx-arc-rgba (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16> start::<int16> end::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (arcRGBA dst x y rad start end r g b a))
     (raise-gfx-error gfx-arc-rgba)))
@@ -269,7 +278,8 @@ do {\
       (raise-gfx-error gfx-aacircle-color))))
 
 (define-cproc gfx-aacircle-rgba (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (aacircleRGBA dst x y rad r g b a))
     (raise-gfx-error gfx-aacircle-rgba)))
@@ -285,7 +295,8 @@ do {\
       (raise-gfx-error gfx-filled-circle-color))))
 
 (define-cproc gfx-filled-circle-rgba (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (filledCircleRGBA dst x y rad r g b a))
     (raise-gfx-error gfx-filled-circle-rgba)))
@@ -301,7 +312,8 @@ do {\
       (raise-gfx-error gfx-ellipse-color))))
 
 (define-cproc gfx-ellipse-rgba (dst::<sdl-surface> x::<int16> y::<int16> rx::<int16> ry::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (ellipseRGBA dst x y rx ry r g b a))
     (raise-gfx-error gfx-ellipse-rgba)))
@@ -317,7 +329,8 @@ do {\
       (raise-gfx-error gfx-aaellipse-color))))
 
 (define-cproc gfx-aaellipse-rgba (dst::<sdl-surface> x::<int16> y::<int16> rx::<int16> ry::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (aaellipseRGBA dst x y rx ry r g b a))
     (raise-gfx-error gfx-aaellipse-rgba)))
@@ -333,7 +346,8 @@ do {\
       (raise-gfx-error gfx-filled-ellipse-color))))
 
 (define-cproc gfx-filled-ellipse-rgba (dst::<sdl-surface> x::<int16> y::<int16> rx::<int16> ry::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (filledEllipseRGBA dst x y rx ry r g b a))
     (raise-gfx-error gfx-filled-ellipse-rgba)))
@@ -350,7 +364,8 @@ do {\
       (raise-gfx-error gfx-pie-color))))
 
 (define-cproc gfx-pie-rgba (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16> start::<int16> end::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (pieRGBA dst x y rad start end r g b a))
     (raise-gfx-error gfx-pie-rgba)))
@@ -367,7 +382,8 @@ do {\
       (raise-gfx-error gfx-filled-pie-color))))
 
 (define-cproc gfx-filled-pie-rgba (dst::<sdl-surface> x::<int16> y::<int16> rad::<int16> start::<int16> end::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (filledPieRGBA dst x y rad start end r g b a))
     (raise-gfx-error gfx-filled-pie-rgba)))
@@ -383,7 +399,8 @@ do {\
       (raise-gfx-error gfx-trigon-color))))
 
 (define-cproc gfx-trigon-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16> x3::<int16> y3::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (trigonRGBA dst x1 y1 x2 y2 x3 y3 r g b a))
     (raise-gfx-error gfx-trigon-rgba)))
@@ -399,7 +416,8 @@ do {\
       (raise-gfx-error gfx-aatrigon-color))))
 
 (define-cproc gfx-aatrigon-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16> x3::<int16> y3::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (aatrigonRGBA dst x1 y1 x2 y2 x3 y3 r g b a))
     (raise-gfx-error gfx-aatrigon-rgba)))
@@ -415,7 +433,8 @@ do {\
       (raise-gfx-error gfx-filled-trigon-color))))
 
 (define-cproc gfx-filled-trigon-rgba (dst::<sdl-surface> x1::<int16> y1::<int16> x2::<int16> y2::<int16> x3::<int16> y3::<int16>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (filledTrigonRGBA dst x1 y1 x2 y2 x3 y3 r g b a))
     (raise-gfx-error gfx-filled-trigon-rgba)))
@@ -457,7 +476,8 @@ do {\
       (raise-gfx-error gfx-polygon-color))))
 
 (define-cproc gfx-polygon-rgba (dst::<sdl-surface> vx::<top> vy::<top> n::<int> 
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (let* ([p-vx :: Sint16*]
          [tmp-vx :: (.array Sint16 (TMP_ARY_SIZE))]
@@ -513,7 +533,8 @@ do {\
       (raise-gfx-error gfx-aapolygon-color))))
 
 (define-cproc gfx-aapolygon-rgba (dst::<sdl-surface> vx::<top> vy::<top> n::<int> 
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (let* ([p-vx :: Sint16*]
          [tmp-vx :: (.array Sint16 (TMP_ARY_SIZE))]
@@ -569,7 +590,8 @@ do {\
       (raise-gfx-error gfx-filled-polygon-color))))
 
 (define-cproc gfx-filled-polygon-rgba (dst::<sdl-surface> vx::<top> vy::<top> n::<int> 
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (let* ([p-vx :: Sint16*]
          [tmp-vx :: (.array Sint16 (TMP_ARY_SIZE))]
@@ -652,7 +674,8 @@ do {\
       (raise-gfx-error gfx-bezier-color))))
 
 (define-cproc gfx-bezier-rgba (dst::<sdl-surface> vx::<top> vy::<top> n::<int> s::<int>
-                                                 r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                                 r::<uint8> g::<uint8> b::<uint8> 
+                                                 :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (let* ([p-vx :: Sint16*]
          [tmp-vx :: (.array Sint16 (TMP_ARY_SIZE))]
@@ -691,7 +714,8 @@ do {\
       (raise-gfx-error gfx-character-color))))
 
 (define-cproc gfx-character-rgba (dst::<sdl-surface> x::<int16> y::<int16> c::<char> 
-                                  r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                  r::<uint8> g::<uint8> b::<uint8> 
+                                  :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (let* ([ch :: (unsigned long) (SCM_CHAR_VALUE ch)])
     (unless (SCM_CHAR_ASCII_P ch)
@@ -710,7 +734,8 @@ do {\
       (raise-gfx-error gfx-string-color))))
 
 (define-cproc gfx-string-rgba (dst::<sdl-surface> x::<int16> y::<int16> str::<const-cstring> 
-                                  r::<uint8> g::<uint8> b::<uint8> a::<uint8>) :: <void>
+                                  r::<uint8> g::<uint8> b::<uint8> 
+                                  :optional (a::<uint8> 255)) :: <void>
   (ENSURE_NOT_NULL dst)
   (unless (zero? (stringRGBA dst x y str r g b a))
     (raise-gfx-error gfx-string-rgba)))
