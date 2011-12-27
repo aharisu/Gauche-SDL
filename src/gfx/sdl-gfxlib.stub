@@ -107,7 +107,11 @@ do {\
 ;;---------------
 
 (define-cise-expr (cast-color color)
-  `(* (cast (unsigned int*) (& (unboxing ,color <sdl-color>)))))
+  `(logior (<< (cast (unsigned int) (ref (unboxing ,color <sdl-color>) r)) 24)
+           (logior (<< (cast (unsigned int) (ref (unboxing ,color <sdl-color>) g)) 16)
+                   (logior (<< (cast (unsigned int) (ref (unboxing ,color <sdl-color>) b)) 8)
+                           (ref (unboxing ,color <sdl-color>) unused)))))
+    
 
 (define-cproc gfx-pixel-color (dst::<sdl-surface> x::<int16> y::<int16> color::<top>) :: <void>
   (ENSURE_NOT_NULL dst)
