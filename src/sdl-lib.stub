@@ -2351,7 +2351,7 @@ static ScmVM* Scm_TimerVM;
   )
 
 (define-cproc make-sdl-color (r::<uint8> g::<uint8> b::<uint8>
-                                         :optional (unused::<uint8> 0)) :: <sdl-color>
+                                         :optional (unused::<uint8> 255)) :: <sdl-color>
   (let* ([color :: SDL_Color])
     (set! (@ color.r) r)
     (set! (@ color.g) g)
