@@ -1,0 +1,611 @@
+
+"
+#include \"gauche-sdl-net.h\"
+#include \"../sdl_type.gen.h\"
+#include \"net_type.gen.h\"
+"
+
+(include "net_type.gen.stub.header")
+(include "../sdl_type.gen.stub.header")
+(include "../macro.stub.header")
+
+
+(define-cise-stmt (set-ctx-data var obj)
+  `(cond
+     [(is-type? ,obj <sdl-rw-ops>)
+      (set! ,var (unboxing ,obj <sdl-rw-ops>))]
+     [(is-type? ,obj <sdl-rw-ops-user>)
+      (set! ,var (cast SDL_RWops* (unboxing ,obj <sdl-rw-ops-user>)))]
+     [else (Scm_Error "<sdl-rw-ops> required, but got %S." ,obj)]))
+
+(define-cise-stmt raise-net-error 
+  [(_ func-name)
+    `(Scm_RaiseCondition
+      (SCM_OBJ SCM_CLASS_SDL_ERROR)
+       SCM_RAISE_CONDITION_MESSAGE
+        "%s: %s"
+         ,(symbol->string func-name) (SDL_GetError))])
+
+
+;;;;;
+;; Initialize the network API
+;; SDL must be initialized before calls to functions in this library,
+;; because this library uses utility functions from the SDL library.
+(define-cproc net-init () :: <void>
+  (unless (zero? (SDLNet_Init))
+    (raise-net-error net-init)))
+
+;;;;;
+;; Cleanup the network API
+(define-cproc net-quit () :: <void>
+  (SDLNet_Quit))
+
+(define-cclass <net-ip-address>
+  :built-in :struct
+  "Scm_IPaddress*" "Scm_IPaddressClass"
+  ()
+  (
+   (host :type <uint32>)
+   (port :type <uint16>)
+   )
+  (printer #t)
+  (compare #t)
+  )
+
+(define-cclass <net-generic-socket>
+  :built-in
+  "Scm_SDLNet_GenericSocket*" "Scm_SDLNet_GenericSocketClass"
+  ()
+  (
+   (ready :type <boolean>
+          :setter #f)
+   )
+  )
+
+(define-cclass <net-tcp-socket>
+  :built-in
+  "Scm_TCPsocket*" "Scm_TCPsocketClass"
+  ("Scm_SDLNet_GenericSocketClass")
+  ()
+  )
+
+(define-cclass <net-udp-socket>
+  :built-in
+  "Scm_UDPsocket*" "Scm_UDPsocketClass"
+  ("Scm_SDLNet_GenericSocketClass")
+  ()
+  )
+
+
+(define-enum INADDR_ANY)
+(define-enum INADDR_NONE)
+(define-enum INADDR_BROADCAST)
+
+;;;;;
+;; Resolve a host name and port to an IP address in network form.
+;; If the function succeeds, it will return instance of <net-ip-address>.
+;; If the host couldn't be resolved, this function will return #f.
+;; If 'host' is #f, the resolved host will be set to INADDR_ANY.
+(define-cproc net-resolve-host (host::<top> port::<uint16>) :: <top>
+  (let* ([host-data :: (const char*)]
+         [addr :: IPaddress])
+    (cond
+      [(false? host) (set! host-data 0)]
+      [(is-type? host <const-cstring>)
+       (set! host-data (unboxing host <const-cstring>))])
+    (if (zero? (SDLNet_ResolveHost (& addr) host-data port))
+      (result (boxing addr <net-ip-address>))
+      (result (boxing 0 <boolean>)))))
+
+;;;;;
+;; Resolve an ip address to a host name in canonical form.
+;; If the ip couldn't be resolved, this function returns #f,
+;; otherwise a instance of <string> containing the hostname
+;; is returned.  Note that this function is not thread-safe.
+(define-cproc net-resolve-ip (ip::<net-ip-address>) :: <top>
+  (let* ([host :: (const char*) (SDLNet_ResolveIP (& ip))])
+    (if (zero? host)
+      (result (boxing 0 <boolean>))
+      (result (boxing host <const-cstring>)))))
+
+;;;;;
+;; Open a TCP network socket
+;; If ip.host is INADDR_NONE or INADDR_ANY, this creates a local server
+;; socket on the given port, otherwise a TCP connection to the remote
+;; host and port is attempted. The address passed in should already be
+;; swapped to network byte order (addresses returned from 
+;; net-resolv-host are already in the correct form).
+;; The newly created socket is returned, or raise <sdl-error> if there was an error.
+(define-cproc net-tcp-open (ip::<net-ip-address>) :: <net-tcp-socket>
+  (let* ([sock :: TCPsocket (SDLNet_TCP_Open (& ip))])
+    (if (zero? sock)
+      (raise-net-error net-tcp-open)
+      (result sock))))
+
+;;;;;
+;; Accept an incoming connection on the given server socket.
+;; The newly created socket is returned, or raise <sdl-error> if there was an error.
+(define-cproc net-tcp-accept (server::<net-tcp-socket>) :: <net-tcp-socket>
+  (let* ([sock :: TCPsocket (SDLNet_TCP_Accept server)])
+    (if (zero? sock)
+      (raise-net-error net-tcp-accept)
+      (result sock))))
+
+;;;;;
+;; Get the IP address of the remote system associated with the socket.
+;; If the socket is a server socket, this function returns #f.
+(define-cproc net-tcp-get-peer-address (sock::<net-tcp-socket>) :: <top>
+  (let* ([addr :: IPaddress* (SDLNet_TCP_GetPeerAddress sock)])
+    (if (zero? addr)
+      (result (boxing 0 <boolean>))
+      (result (boxing (* addr) <net-ip-address>)))))
+
+;;;;;
+;; Send 'start' to 'end' of 'data' over the non-server socket 'sock'
+;; This function returns the actual amount of data sent.  If the return value
+;; is less than the amount of data sent, then either the remote connection was
+;; closed, or an unknown socket error occurred.
+(define-cproc net-tcp-send (sock::<net-tcp-socket> data::<top>
+                            :optional (start::<fixnum> 0) (end::<fixnum> -1)) :: <int>
+  (let* ([buf :: char*]
+         [len :: int]
+         [ele-size :: int])
+    (cond
+      [(is-type? data <nnvector>)
+       (set! buf (ref (unboxing data <nnvector>) buf))
+       (set! len (NNVECTOR_SIZE2LENGTH
+                   (ref (unboxing data <nnvector>) type)
+                   (ref (unboxing data <nnvector>) size)))
+       (set! ele-size (logand 
+                        (ref (unboxing data <nnvector>) type)
+                        NN_SIZE_MASK))]
+      [(is-type? data <uvector>)
+       (set! buf (SCM_UVECTOR_ELEMENTS data))
+       (set! len (SCM_UVECTOR_SIZE data))
+       (set! ele-size (Scm_UVectorElementSize (Scm_ClassOf data)))]
+      [else (Scm_Error "the 2nd arguments requires a <uvector> or <nnvector>, but gut %S." data)])
+    (SCM_CHECK_START_END start end len)
+    (result (SDLNet_TCP_Send sock (+ buf (* ele-size start)) (* (- end start) ele-size)))))
+
+;;;;;
+;; Receive 'start' to 'maxlen' of data over the non-server socket 'sock',
+;; and store them in the buffer pointed to by 'data'.
+;; This function returns the actual amount of data received.  If the return
+;; value is less than or equal to zero, then either the remote connection was
+;; closed, or an unknown socket error occurred.
+(define-cproc net-tcp-recv (sock::<net-tcp-socket> data::<top>
+                            :optional (start::<fixnum> 0) (maxlen::<fixnum> -1)) :: <int>
+  (let* ([buf :: char*]
+         [len :: int]
+         [ele-size :: int])
+    (cond
+      [(is-type? data <nnvector>)
+       (set! buf (ref (unboxing data <nnvector>) buf))
+       (set! len (NNVECTOR_SIZE2LENGTH
+                   (ref (unboxing data <nnvector>) type)
+                   (ref (unboxing data <nnvector>) size)))
+       (set! ele-size (logand 
+                        (ref (unboxing data <nnvector>) type)
+                        NN_SIZE_MASK))]
+      [(is-type? data <uvector>)
+       (set! buf (SCM_UVECTOR_ELEMENTS data))
+       (set! len (SCM_UVECTOR_SIZE data))
+       (set! ele-size (Scm_UVectorElementSize (Scm_ClassOf data)))]
+      [else (Scm_Error "the 2nd arguments requires a <uvector> or <nnvector>, but gut %S." data)])
+    (SCM_CHECK_START_END start maxlen len)
+    (result (SDLNet_TCP_Recv sock (+ buf (* ele-size start)) (* (- maxlen start) ele-size)))))
+
+;;;;;
+;; Close a TCP network socket
+(define-cproc net-tcp-close (sock::<net-tcp-socket>) :: <void>
+  (when sock
+    (SDLNet_TCP_Close sock)
+    (set! (SCM_TCPSOCKET_DATA sock-scm) 0)))
+
+(define-enum SDLNET_MAX_UDPCHANNELS)
+(define-enum SDLNET_MAX_UDPADDRESSES)
+
+"
+#define SET_NNVECTOR_DATA(obj, v_buf, v_type, v_size) \
+do {\
+  SCM_NNVECTOR_DATA(obj).buf = (v_buf); \
+  SCM_NNVECTOR_DATA(obj).size = (v_size);  \
+  SCM_NNVECTOR_DATA(obj).type  = (v_type);  \
+}while(0)
+"
+
+(define-cclass <net-udp-packet>
+  :built-in
+  "ScmUDPpacketWrapper*" "Scm_UDPpacketWrapperClass"
+  ()
+  (
+   (channel :type <int>
+            :c-name "o->channel")
+   (data :type <nnvector>
+         :setter #f
+         :getter "
+         SET_NNVECTOR_DATA(obj->vec, obj->o->data, TYPE_U8, obj->o->maxlen);
+         return obj->vec;
+         ")
+   (len :type <int>
+        :c-name "o->len")
+   (maxlen :type <int>
+           :c-name "o->maxlen"
+           :setter #f)
+   (address :type <net-ip-address>
+            :c-name "o->address")
+   )
+  )
+
+;;;;;
+;; Allocatea single UDP packet 'size' bytes long.
+;; The new packet is returned, or raise <sdl-error> if the function ran out of memory.
+(define-cproc net-alloc-packet (size::<int>) :: <net-udp-packet>
+  (let* ([packet :: UDPpacket* (SDLNet_AllocPacket size)])
+    (if (zero? packet)
+      (raise-net-error net-alloc-packet))
+    (let* ([wrapper :: UDPpacketWrapper* (SCM_NEW UDPpacketWrapper)]
+           [vec :: nnvector]) 
+      (set! (@ wrapper->vec) (boxing vec <nnvector>))
+      (set! (@ wrapper->o) packet)
+      (result wrapper))))
+
+(define-cproc net-resize-packet (packet::<net-udp-packet> newsize::<int>) :: <void>
+  (when (!= (@ packet->o->maxlen) newsize)
+    (unless (== newsize (SDLNet_ResizePacket (@ packet->o) newsize))
+      (raise-net-error net-resize-packet))))
+
+(define-cproc net-free-packet (packet::<net-udp-packet>) :: <void>
+  (when (@ packet->o)
+    (SDLNet_FreePacket (@ packet->o))
+    (set! (SCM_UDPPACKETWRAPPER_DATA packet-scm) 0)))
+
+;;;;;
+;; @type cmd
+;; @@class-c->scm Scm_SequenceClass <sequence>
+;; @@class-c->scm Scm_CollectionClass <collection>
+(define-cclass <net-udp-packet-vec>
+  :built-in
+  "ScmUDPpacketV*" "Scm_UDPpacketVClass"
+  ("Scm_SequenceClass" "Scm_CollectionClass")
+  (
+   (length :type <int>
+           :setter #f)
+   )
+  )
+
+;;;;;
+;; Allocate a UDP packet vector (array of packets) of 'howmany' packets,
+;; each 'size' bytes long.
+;; A pointer to the first packet in the array is returned, or raise <sdl-error> if the
+;; function ran out of memory.
+(define-cproc net-alloc-packet-v (howmany::<int> size::<int>) :: <net-udp-packet-vec>
+  (let* ([packet :: UDPpacket** (SDLNet_AllocPacketV howmany size)])
+    (if (zero? packet)
+      (raise-net-error net-alloc-packet-v))
+    (let* ([ary :: ScmUDPpacketWrapper* (SCM_NEW_ARRAY ScmUDPpacketWrapper howmany)]
+           [obj :: UDPpacketV* (SCM_NEW UDPpacketV)]
+           [vec :: nnvector])
+      (dotimes [i howmany]
+        (SCM_SET_CLASS (& (aref ary i)) SCM_CLASS_UDPPACKETWRAPPER)
+        (set! (ref (aref ary i) data) (SCM_NEW UDPpacketWrapper))
+        (set! (-> (ref (aref ary i) data) vec) (boxing vec <nnvector>)))
+      (set! (@ obj->v) packet)
+      (set! (@ obj->packet_ary) ary)
+      (set! (@ obj->length) howmany)
+      (result obj))))
+
+(define-cproc net-free-packet-v (packet-v::<net-udp-packet-vec>) :: <void>
+  (when packet-v
+    (SDLNet_FreePacketV (@ packet-v->v))
+    (set! (SCM_UDPPACKETV_DATA packet-v-scm) 0)))
+
+(define-cproc net-udp-packet-vec-ref (vec::<net-udp-packet-vec> index::<int> 
+                                      :optional fallback) :: <top>
+  :fast-flonum
+  (set! (-> (ref (aref (@ vec->packet_ary) index) data) o)
+    (aref (@ vec->v) index))
+  (result (SCM_OBJ (& (aref (@ vec->packet_ary) index)))))
+
+;;;;;
+;; Open a UDP network socket
+;; If 'port' is non-zero, the UDP socket is bound to a local port.
+;; The 'port' should be given in native byte order, but is used
+;; internally in network (big endian) byte order, in addresses, etc.
+;; This allows other systems to send to this socket via a known port.
+(define-cproc net-udp-open (port::<uint16>) :: <net-udp-socket>
+  (let* ([sock :: UDPsocket (SDLNet_UDP_Open port)])
+    (if (zero? sock)
+      (raise-net-error net-udp-open)
+      (result sock))))
+
+;;;;;
+;; Bind the address 'address' to the requested channel on the UDP socket.
+;; If the channel is -1, then the first unbound channel that has not yet
+;; been bound to the maximum number of addresses will be bound with
+;; the given address as it's primary address.
+;; If the channel is already bound, this new address will be added to the
+;; list of valid source addresses for packets arriving on the channel.
+;; If the channel is not already bound, then the address becomes the primary
+;; address, to which all outbound packets on the channel are sent.
+;; This function returns the channel which was bound, or raise <sdl-error> on error.
+(define-cproc net-udp-bind (sock::<net-udp-socket> channel::<int> address::<net-ip-address>) :: <void>
+  (ENSURE_NOT_NULL sock)
+  (unless (zero? (SDLNet_UDP_Bind sock channel (& address)))
+    (raise-net-error net-udp-bind)))
+
+;;;;;
+;; Unbind all addresses from the given channel
+(define-cproc net-udp-unbind (sock::<net-udp-socket> channel::<int>) :: <void>
+  (ENSURE_NOT_NULL sock)
+  (SDLNet_UDP_Unbind sock channel))
+
+;;;;;
+;; Get the primary IP address of the remote system associated with the 
+;; socket and channel.  If the channel is -1, then the primary IP port
+;; of the UDP socket is returned -- this is only meaningful for sockets
+;; opened with a specific port.
+;; If the channel is not bound and not -1, this function returns #f.
+(define-cproc net-udp-get-peer-address (sock::<net-udp-socket> channel::<int>) :: <top>
+  (ENSURE_NOT_NULL sock)
+  (let* ([addr :: IPaddress* (SDLNet_UDP_GetPeerAddress sock channel)])
+    (if (zero? addr)
+      (result (boxing 0 <boolean>))
+      (result (boxing (* addr) <net-ip-address>)))))
+
+;;;;;
+;; Send a vector of packets to the the channels specified within the packet.
+;; If the channel specified in the packet is -1, the packet will be sent to
+;; the address in the 'src' member of the packet.
+;; Each packet will be updated with the status of the packet after it has 
+;; been sent, -1 if the packet send failed.
+;; This function returns the number of packets sent.
+(define-cproc net-udp-send-v (sock::<net-udp-socket> packets::<net-udp-packet-vec>
+                            :optional (start::<fixnum> 0) (npackets::<fixnum> -1)) :: <int>
+ (ENSURE_NOT_NULL sock)
+ (ENSURE_NOT_NULL packets)
+ (let* ([len :: int]
+        [buf :: UDPpacket**])
+   (set! len (@ packets->length))
+   (set! buf (@ packets->v))
+   (SCM_CHECK_START_END start npackets len)
+   (let* ([nsent :: int (SDLNet_UDP_SendV sock (+ buf start) (- npackets start))])
+     (if (< nsent 0)
+       (raise-net-error net-udp-send-v)
+       (result nsent)))))
+
+;;;;;
+;; Send a single packet to the specified channel.
+;; If the channel specified in the packet is -1, the packet will be sent to
+;; the address in the 'src' member of the packet.
+;; The packet will be updated with the status of the packet after it has been sent.
+;; This function returns #t if the packet was sent, or #f on error.
+;;
+;; NOTE:
+;; The maximum size of the packet is limited by the MTU (Maximum Transfer Unit)
+;; of the transport medium.  It can be as low as 250 bytes for some PPP links,
+;; and as high as 1500 bytes for ethernet.
+(define-cproc net-udp-send (sock::<net-udp-socket> channel::<int> packet::<net-udp-packet>) :: <boolean>
+  (ENSURE_NOT_NULL sock)
+  (ENSURE_NOT_NULL packet)
+  (let* ([nsent :: int (SDLNet_UDP_Send sock channel (@ packet->o))])
+    (if (< nsent 0)
+      (raise-net-error net-udp-send)
+      (result nsent))))
+
+;;;;;
+;; Receive a vector of pending packets from the UDP socket.
+;; The returned packets contain the source address and the channel they arrived
+;; on.  If they did not arrive on a bound channel, the the channel will be set
+;; to -1.
+;; The channels are checked in highest to lowest order, so if an address is
+;; bound to multiple channels, the highest channel with the source address
+;; bound will be returned.
+;; This function returns the number of packets read from the network, or raise <sdl-error>
+;; on error.  This function does not block, so can return 0 packets pending.
+(define-cproc net-udp-recv-v (sock::<net-udp-socket> packets::<net-udp-packet-vec>
+                              :optional (start::<fixnum> 0)) :: <int>
+  (ENSURE_NOT_NULL sock)
+  (ENSURE_NOT_NULL packets)
+  (let* ([len :: int]
+         [buf :: UDPpacket**])
+    (set! len (@ packets->length))
+    (set! buf (@ packets->v))
+    (when (or (< start 0) (> start len))
+      (Scm_Error "start argument out of range:%d" start))
+    (let* ([nrecv :: int (SDLNet_UDP_RecvV sock (+ buf start))])
+      (if (< nrecv 0)
+        (raise-net-error net-udp-recv-v)
+        (result nrecv)))))
+
+;;;;;
+;; Receive a single packet from the UDP socket.
+;; The returned packet contains the source address and the channel it arrived
+;; on.  If it did not arrive on a bound channel, the the channel will be set
+;; to -1.
+;; The channels are checked in highest to lowest order, so if an address is
+;; bound to multiple channels, the highest channel with the source address
+;; bound will be returned.
+;; This function returns the number of packets read from the network, or raise <sdl-error>
+;; on error.  This function does not block, so can return 0 packets pending.
+(define-cproc net-udp-recv (sock::<net-udp-socket> packet::<net-udp-packet>) :: <int>
+  (ENSURE_NOT_NULL sock)
+  (ENSURE_NOT_NULL packet)
+  (let* ([nrecv :: int (SDLNet_UDP_Recv sock (@ packet->o))])
+    (if (< nrecv 0)
+      (raise-net-error net-udp-recv)
+      (result nrecv))))
+
+;;;;;
+;; Close a UDP network socket
+(define-cproc net-udp-close (sock::<net-udp-socket>) :: <void>
+  (when sock
+    (SDLNet_UDP_Close sock)
+    (set! (SCM_UDPSOCKET_DATA sock-scm) 0)))
+
+;;;;;
+;; Allocate a socket set for use with net-check-sockets
+;; This returns a socket set for up to 'maxsockets' sockets, or raise <sdl-error> if
+;; the function ran out of memory.
+(define-cproc net-alloc-socket-set (maxsockets::<int>) :: <net-socket-set>
+  (let* ([set :: SDLNet_SocketSet (SDLNet_AllocSocketSet maxsockets)])
+    (if (zero? set)
+      (raise-net-error net-alloc-socket-set)
+      (result set))))
+
+(define-cise-stmt (assign-sock sock var)
+  `(cond
+     [(is-type? ,sock <net-tcp-socket>)
+      (set! ,var (cast SDLNet_GenericSocket (unboxing ,sock <net-tcp-socket>)))]
+     [(is-type? ,sock <net-udp-socket>) 
+      (set! ,var (cast SDLNet_GenericSocket (unboxing ,sock <net-udp-socket>)))]
+     [else (Scm_Error "<net-generic-socket> required, but got %S." ,sock)]))
+
+
+;;;;;
+;; Add a socket to a set of sockets to be checked for available data
+(define-cproc net-add-socket (set::<net-socket-set> sock::<top>) :: <int>
+  (ENSURE_NOT_NULL set)
+  (let* ([s :: SDLNet_GenericSocket])
+    (assign-sock sock s)
+    (ENSURE_NOT_NULL s)
+    (let* ([num :: int (SDLNet_AddSocket set s)])
+      (if (< num 0)
+        (raise-net-error net-add-socket)
+        (result num)))))
+
+;;;;;
+;; Remove a socket from a set of sockets to be checked for available data
+(define-cproc net-del-socket (set::<net-socket-set> sock::<top>) :: <int>
+  (ENSURE_NOT_NULL set)
+  (let* ([s :: SDLNet_GenericSocket])
+    (assign-sock sock s)
+    (ENSURE_NOT_NULL s)
+    (let* ([num :: int (SDLNet_DelSocket set s)])
+      (if (< num 0)
+        (raise-net-error net-del-socket)
+        (result num)))))
+
+;;;;;
+;; This function checks to see if data is available for reading on the
+;; given set of sockets.  If 'timeout' is 0, it performs a quick poll,
+;; otherwise the function returns when either data is available for
+;; reading, or the timeout in milliseconds has elapsed, which ever occurs
+;; first.  This function returns the number of sockets ready for reading, 
+;; or raise <sdl-error> if there was an error with the select() system call.
+(define-cproc net-check-sockets (set::<net-socket-set> timeout::<uint32>) :: <int>
+  (ENSURE_NOT_NULL set)
+  (let* ([num :: int (SDLNet_CheckSockets set timeout)])
+    (if (< num 0)
+      (raise-net-error net-check-sockets)
+      (result num))))
+
+;;;;;
+;; After calling net-check-sockets, you can use this function on a
+;; socket that was in the socket set, to find out if data is available for reading.
+(define-cproc net-socket-ready? (sock::<top>) :: <boolean>
+  (let* ([s :: SDLNet_GenericSocket])
+    (assign-sock sock s)
+    (ENSURE_NOT_NULL s)
+    (result (SDLNet_SocketReady s))))
+
+;;;;;
+;; Free a set of sockets allocated by net-alloc-socket-set
+(define-cproc net-free-socket-set (set::<net-socket-set>) :: <void>
+  (when set
+    (SDLNet_FreeSocketSet set)
+    (set! (-> (SCM_FOREIGN_POINTER set-scm) ptr) 0)))
+
+(define-cproc net-write-16 (value::<uint16> area::<top>
+                            :optional (offset-in-bytes::<fixnum> 0)) :: <void>
+  (let* ([buf :: char*])
+    (cond
+      [(is-type? area <nnvector>)
+       (set! buf (ref (unboxing area <nnvector>) buf))]
+      [(is-type? area <uvector>)
+       (set! buf (SCM_UVECTOR_ELEMENTS area))]
+      [else (Scm_Error "the 2nd arguments requires a <uvector> or <nnvector>, but gut %S." area)])
+    (SDLNet_Write16 value (+ buf offset-in-bytes))))
+
+(define-cproc net-write-s16 (value::<int16> area::<top>
+                            :optional (offset-in-bytes::<fixnum> 0)) :: <void>
+  (let* ([buf :: char*])
+    (cond
+      [(is-type? area <nnvector>)
+       (set! buf (ref (unboxing area <nnvector>) buf))]
+      [(is-type? area <uvector>)
+       (set! buf (SCM_UVECTOR_ELEMENTS area))]
+      [else (Scm_Error "the 2nd arguments requires a <uvector> or <nnvector>, but gut %S." area)])
+    (SDLNet_Write16 value (+ buf offset-in-bytes))))
+
+(define-cproc net-write-32 (value::<uint32> area::<top>
+                            :optional (offset-in-bytes::<fixnum> 0)) :: <void>
+  (let* ([buf :: char*])
+    (cond
+      [(is-type? area <nnvector>)
+       (set! buf (ref (unboxing area <nnvector>) buf))]
+      [(is-type? area <uvector>)
+       (set! buf (SCM_UVECTOR_ELEMENTS area))]
+      [else (Scm_Error "the 2nd arguments requires a <uvector> or <nnvector>, but gut %S." area)])
+    (SDLNet_Write32 value (+ buf offset-in-bytes))))
+
+(define-cproc net-write-s32 (value::<int32> area::<top>
+                            :optional (offset-in-bytes::<fixnum> 0)) :: <void>
+  (let* ([buf :: char*])
+    (cond
+      [(is-type? area <nnvector>)
+       (set! buf (ref (unboxing area <nnvector>) buf))]
+      [(is-type? area <uvector>)
+       (set! buf (SCM_UVECTOR_ELEMENTS area))]
+      [else (Scm_Error "the 2nd arguments requires a <uvector> or <nnvector>, but gut %S." area)])
+    (SDLNet_Write32 value (+ buf offset-in-bytes))))
+
+(define-cproc net-read-16 (area::<top>
+                           :optional (offset-in-bytes::<fixnum> 0)) :: <uint16>
+  (let* ([buf :: char*])
+    (cond
+      [(is-type? area <nnvector>)
+       (set! buf (ref (unboxing area <nnvector>) buf))]
+      [(is-type? area <uvector>)
+       (set! buf (SCM_UVECTOR_ELEMENTS area))]
+      [else (Scm_Error "the 1st arguments requires a <uvector> or <nnvector>, but gut %S." area)])
+    (set! buf (+ buf offset-in-bytes))
+    (result (SDLNet_Read16 buf))))
+
+(define-cproc net-read-s16 (area::<top>
+                           :optional (offset-in-bytes::<fixnum> 0)) :: <int16>
+  (let* ([buf :: char*])
+    (cond
+      [(is-type? area <nnvector>)
+       (set! buf (ref (unboxing area <nnvector>) buf))]
+      [(is-type? area <uvector>)
+       (set! buf (SCM_UVECTOR_ELEMENTS area))]
+      [else (Scm_Error "the 1st arguments requires a <uvector> or <nnvector>, but gut %S." area)])
+    (set! buf (+ buf offset-in-bytes))
+    (result (cast short (SDLNet_Read16 buf)))))
+
+(define-cproc net-read-32 (area::<top>
+                           :optional (offset-in-bytes::<fixnum> 0)) :: <uint32>
+  (let* ([buf :: char*])
+    (cond
+      [(is-type? area <nnvector>)
+       (set! buf (ref (unboxing area <nnvector>) buf))]
+      [(is-type? area <uvector>)
+       (set! buf (SCM_UVECTOR_ELEMENTS area))]
+      [else (Scm_Error "the 1st arguments requires a <uvector> or <nnvector>, but gut %S." area)])
+    (set! buf (+ buf offset-in-bytes))
+    (result (SDLNet_Read32 buf))))
+
+(define-cproc net-read-s32 (area::<top>
+                           :optional (offset-in-bytes::<fixnum> 0)) :: <int32>
+  (let* ([buf :: char*])
+    (cond
+      [(is-type? area <nnvector>)
+       (set! buf (ref (unboxing area <nnvector>) buf))]
+      [(is-type? area <uvector>)
+       (set! buf (SCM_UVECTOR_ELEMENTS area))]
+      [else (Scm_Error "the 1st arguments requires a <uvector> or <nnvector>, but gut %S." area)])
+    (set! buf (+ buf offset-in-bytes))
+    (result (cast int (SDLNet_Read32 buf)))))
+
+

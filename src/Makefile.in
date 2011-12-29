@@ -20,6 +20,7 @@ HAVE_SDL_GFX = @HAVE_SDL_GFX@
 HAVE_SDL_IMAGE = @HAVE_SDL_IMAGE@
 HAVE_SDL_MIXER = @HAVE_SDL_MIXER@
 HAVE_SDL_TTF = @HAVE_SDL_TTF@
+HAVE_SDL_NET = @HAVE_SDL_NET@
 
 
 SCRIPTDIR = "@SCRIPTDIR@"
@@ -59,6 +60,7 @@ all : $(TARGET)
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) all); fi
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) all); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) all); fi
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) all); fi
 
 #generate stub -> c file
 .SUFFIXES:.stub .c
@@ -83,6 +85,7 @@ check : all
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) check); fi
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) check); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) check); fi
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) check); fi
 
 install : all
 	$(INSTALL) -m 444 -T $(GAUCHE_PKGINCDIR) $(HEADERS)
@@ -91,6 +94,7 @@ install : all
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) install); fi
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) install); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) install); fi
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) install); fi
 
 uninstall :
 	$(INSTALL) -U $(GAUCHE_PKGINCDIR) $(HEADERS)
@@ -99,6 +103,7 @@ uninstall :
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) uninstall); fi
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) uninstall); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) uninstall); fi
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) uninstall); fi
 
 clean :
 	$(GAUCHE_PACKAGE) compile --clean gauche_sdl $(gauche_sdl_SRCS)
@@ -107,6 +112,7 @@ clean :
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) clean); fi
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) clean); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) clean); fi
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) clean); fi
 
 distclean : clean
 	rm -rf $(CONFIG_GENERATED)
@@ -114,6 +120,7 @@ distclean : clean
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) distclean); fi
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) distclean); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) distclean); fi
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) distclean); fi
 
 maintainer-clean : clean
 	rm -rf $(CONFIG_GENERATED) configure VERSION
@@ -121,4 +128,5 @@ maintainer-clean : clean
 	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) maintainer-clean); fi
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) maintainer-clean); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) maintainer-clean); fi
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) maintainer-clean); fi
 

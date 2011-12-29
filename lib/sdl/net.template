@@ -1,0 +1,31 @@
+;;;
+;;; net.scm - Gauche SDL_net binding
+;;;
+
+;;;;;
+;;@type cmd
+;;@@parse-relative #f
+
+(define-module sdl.net
+  (use gauche.sequence)
+  (use sdl)
+  (export-all)
+  )
+(select-module sdl.net)
+
+(dynamic-load "gauche-sdl-net")
+
+(define-method call-with-iterator ((v <net-udp-packet-vec>) proc . opts)
+  (let-keywords opts ([start #f])
+    (let* ([len (slot-ref v 'length)]
+           [i (or start 0)])
+      (proc (lambda () (>= i len))
+            (lambda () (let ([r (net-udp-packet-vec-ref v i)])
+                         (inc! i)
+                         r))))))
+;;not support call-with-builder
+
+(define-method referencer ((v <net-udp-packet-vec>)) net-udp-packet-vec-ref)
+(define-method size-of ((v <net-udp-packet-vec>)) (slot-ref v 'length))
+
+

@@ -25,8 +25,8 @@ GENDOC="@GENDOC@"
 
 
 #SCMFILES = color.scm gfx.scm image.scm mixer.scm ttf.scm
-SCMFILES = image.scm ttf.scm mixer.scm gfx.scm
-GENERATED = image.scm ttf.scm mixer.scm gfx.scm
+SCMFILES = image.scm ttf.scm mixer.scm gfx.scm net.scm
+GENERATED = image.scm ttf.scm mixer.scm gfx.scm net.scm
 
 CONFIG_GENERATED = Makefile
 
@@ -46,6 +46,9 @@ mixer.scm: $(STUBDIR)/mixer/sdl-mixerlib.stub mixer.template
 
 gfx.scm: $(STUBDIR)/gfx/sdl-gfxlib.stub gfx.template
 	$(GOSH) -I$(SCRIPTDIR) $(GENDOC) -s $(STUBDIR)/gfx/sdl-gfxlib.stub -t gfx.template -o gfx.scm
+
+net.scm: $(STUBDIR)/net/sdl-netlib.stub net.template
+	$(GOSH) -I$(SCRIPTDIR) $(GENDOC) -s $(STUBDIR)/net/sdl-netlib.stub -t net.template -o net.scm
 
 test :
 
