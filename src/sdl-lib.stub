@@ -115,6 +115,13 @@
            ")
   )
 
+(define-cfn Scm_MakeNNVector (type::int size::int) ::ScmObj
+            :static
+  (let* ([vec::nnvector])
+    (set! (@ vec.buf) (SCM_NEW_ARRAY Uint8 size))
+    (set! (@ vec.size) size)
+    (set! (@ vec.type) type)
+    (return (boxing vec <nnvector>))))
 
 (define-cproc make-nnvector (type::<fixnum> len::<int>) ::<nnvector>
   (let* ([size::int (NNVECTOR_LENGTH2SIZE type len)]
@@ -132,14 +139,19 @@
            (set! (aref (cast Uint32* (@ vec.buf)) index) n)
            (set! (aref (cast Uint8* (@ vec.buf)) index) n))))
 
-(define-cproc nn8vector-set! (vec::<nnvector> index::<int> num::<uint8>) ::<void>
-  (set! (aref (cast Uint8* (@ vec.buf)) index) num))
+(define-cproc nn8vector-set! (vec::<nnvector> index::<int> num::<uint8>
+                              :optional (offset-in-bytes::<fixnum> 0)) ::<void>
+  (set! (aref (+ (cast Uint8* (@ vec.buf)) offset-in-bytes) index) num))
 
-(define-cproc nn16vector-set! (vec::<nnvector> index::<int> num::<uint16>) ::<void>
-  (set! (aref (cast Uint16* (@ vec.buf)) index) num))
+(define-cproc nn16vector-set! (vec::<nnvector> index::<int> num::<uint16>
+                               :optional (offset-in-bytes::<fixnum> 0)) ::<void>
+  (memcpy (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 2 index))
+          (& num) 2))
 
-(define-cproc nn32vector-set! (vec::<nnvector> index::<int> num::<uint32>) ::<void>
-  (set! (aref (cast Uint32* (@ vec.buf)) index) num))
+(define-cproc nn32vector-set! (vec::<nnvector> index::<int> num::<uint32>
+                               :optional (offset-in-bytes::<fixnum> 0)) ::<void>
+  (memcpy (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 4 index))
+          (& num) 4))
 
 (define-cproc nnbvector-set! (vec::<nnvector> index::<int> b::<boolean>) ::<void>
   (set! (aref (cast Uint8* (@ vec.buf)) index) b))
@@ -153,18 +165,57 @@
            (result (boxing (aref (cast Uint32* (@ vec.buf)) index) <uint32>))
            (result (boxing (aref (cast Uint8* (@ vec.buf)) index) <boolean>))))
 
-(define-cproc nn8vector-ref (vec::<nnvector> index::<int> :optional fallback) ::<uint8>
-  (result (aref (cast Uint8* (@ vec.buf)) index)))
+(define-cproc nn8vector-ref (vec::<nnvector> index::<int> 
+                             :optional (offset-in-bytes::<fixnum> 0) fallback) ::<uint8>
+  (result (aref (+ (cast Uint8* (@ vec.buf)) offset-in-bytes) index)))
 
-(define-cproc nn16vector-ref (vec::<nnvector> index::<int> :optional fallback) ::<uint16>
-  (result (aref (cast Uint16* (@ vec.buf)) index)))
+(define-cproc nn16vector-ref (vec::<nnvector> index::<int>
+                             :optional (offset-in-bytes::<fixnum> 0) fallback) ::<uint16>
+  (let* ([num :: Uint16])
+    (memcpy (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 2 index))
+            (& num) 2)
+  (result num)))
 
-(define-cproc nn32vector-ref (vec::<nnvector> index::<int> :optional fallback) ::<uint32>
-  (result (aref (cast Uint32* (@ vec.buf)) index)))
+(define-cproc nn32vector-ref (vec::<nnvector> index::<int>
+                             :optional (offset-in-bytes::<fixnum> 0) fallback) ::<uint16>
+  (let* ([num :: Uint32])
+    (memcpy (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 4 index))
+            (& num) 4)
+  (result num)))
 
 (define-cproc nnbvector-ref (vec::<nnvector> index::<int> :optional fallback) ::<boolean>
   (result (aref (cast Uint8* (@ vec.buf)) index)))
 
+(define-cproc nnvector-copy (vec::<nnvector> :optional (start::<fixnum> 0) (end::<fixnum> -1)) ::<nnvector>
+  (SCM_CHECK_START_END start end (@ vec.size))
+  (let* ([v :: ScmObj (Scm_MakeNNVector (@ vec.type) 
+                                        (* (logand (@ vec.type) NN_SIZE_MASK)
+                                           (- end start)))])
+    (memcpy (ref (unboxing v <nnvector>) buf)
+            (+ (@ vec.buf) start)
+            (ref (unboxing v <nnvector>) size))
+    (return v)))
+
+(define-cproc nnvector-copy! (target::<nnvector> tstart::<fixnum> source::<nnvector>
+                             :optional (start::<fixnum> 0) (end::<fixnum> -1)) :: <nnvector>
+  (when (!= (@ target.type) (@ source.type))
+    (Scm_Error "type missmatch."))
+  (let* ([tlen::int (NNVECTOR_SIZE2LENGTH (@ target.type) (@ target.size))])
+    (when (and (>= tstart 0) (< tstart tlen))
+      (SCM_CHECK_START_END start end (NNVECTOR_SIZE2LENGTH (@ source.type) (@ source.size)))
+      (set! start (NNVECTOR_LENGTH2SIZE (@ source.type) start))
+      (set! end (NNVECTOR_LENGTH2SIZE (@ source.type) end))
+      (set! tstart (NNVECTOR_LENGTH2SIZE (@ target.type) tstart))
+      (set! tlen (NNVECTOR_LENGTH2SIZE (@ target.type) tlen))
+      (let* ([sp::(const char*)
+               (?: (== start 0) (@ source.buf) (+ (@ source.buf) start))]
+             [ep::(const char*)
+               (?: (== end (@ source.size)) (+ (@ source.buf) (@ source.size)) (+ (@ source.buf) end))]
+             [buf::(char*) (+ (@ target.buf) tstart)])
+        (if (> (- tlen tstart) (- ep sp))
+          (memcpy buf sp (- ep sp))
+          (memcpy buf sp (- tlen tstart))))))
+  (result target))
 
 (define-cproc nnvector->list (vec::<nnvector> 
                                :optional (start::<fixnum> 0) (end::<fixnum> -1)) :: <list>
@@ -281,6 +332,93 @@
          (set! (@ v.type) TYPE_U32)]
         [else (Scm_Error "type mismatch")])
       (result (boxing v <nnvector>)))))
+
+(define-cfn string->bytevector (type::int s::ScmString* start::int end::int) :static
+  (let* ([size::u_int] [len::u_int]
+         [ss::(const char*) (Scm_GetStringContent s (& size) (& len) NULL)])
+    (SCM_CHECK_START_END start end (cast int len))
+    (let* ([sp::(const char*) (?: (== start 0) ss (Scm_StringPosition s start))]
+           [ep::(const char*) (?: (== end len) (+ ss size) (Scm_StringPosition s end))]
+           [buf::char* (SCM_NEW_ATOMIC2 (char*) (- ep sp))])
+      (memcpy buf sp (- ep sp))
+      (let* ([vec :: nnvector])
+        (set! (@ vec.buf) buf)
+        (set! (@ vec.size) (cast int (- ep sp)))
+        (set! (@ vec.type) type)
+        (return (boxing vec <nnvector>))))))
+
+(define-cfn string->bytevector!
+  (v::nnvector* tstart::int s::ScmString* start::int end::int) :: void :static
+  (let* ([tlen::int (@ v->size)])
+    (when (and (>= tstart 0) (< tstart tlen))
+      (let* ([size::u_int] [len::u_int]
+             [ss::(const char*) (Scm_GetStringContent s (& size) (& len) NULL)])
+        (SCM_CHECK_START_END start end (cast int len))
+        (let* ([sp::(const char*)
+                    (?: (== start 0) ss (Scm_StringPosition s start))]
+               [ep::(const char*)
+                    (?: (== end len) (+ ss size) (Scm_StringPosition s end))]
+               [buf::(char*) (+ (cast char* (@ v->buf)) tstart)])
+          (if (> (- tlen tstart) (- ep sp))
+            (memcpy buf sp (- ep sp))
+            (memcpy buf sp (- tlen tstart))))))))
+
+(define-cfn string->wordvector (type::int s::ScmString* start::int end::int) :static
+  (let* ([size::u_int] [len::u_int]
+         [ss::(const char*) (Scm_GetStringContent s (& size) (& len) NULL)])
+    (SCM_CHECK_START_END start end (cast int len))
+    (let* ([sp::(const char*)
+                (?: (== start 0) ss (Scm_StringPosition s start))]
+           [ep::(const char*)
+                (?: (== end len) (+ ss size) (Scm_StringPosition s end))]
+           [v (Scm_MakeNNVector type (* (- end start) 4))]
+           [eltp::ScmInt32* (cast ScmInt32* (ref (unboxing v <nnvector>) buf))]
+           [i::int 0])
+      (for [() (< sp ep) (post++ i)]
+           (let* ([ch::ScmChar])
+             (SCM_CHAR_GET sp ch)
+             (set! (aref eltp i) ch)
+             (+= sp (SCM_CHAR_NBYTES ch))))
+      (return v))))
+
+(define-cproc string->nnvector (s::<string> type::<fixnum> 
+                                :optional (start::<fixnum> 0) (end::<fixnum> -1)) :: <top>
+  (cond
+    [(== type TYPE_U8) (result (string->bytevector type s start end))]
+    [(== type TYPE_U32) (result (string->wordvector type s start end))]
+    [else (Scm_Error "TYPE_U8 or TYPE_U32 required, but got %S" type)]))
+
+(define-cproc string->nnvector! (v::<nnvector> tstart::<int> s::<string>
+                                 :optional (start::<fixnum> 0) (end::<fixnum> -1)) :: <nnvector>
+  (when (!= (@ v.type) TYPE_U8)
+    (Scm_Error "TYPE_U8 required, but got %S" (@ v.type)))
+  (string->bytevector! (& v) tstart s start end)
+  (result v))
+
+
+(define-cfn bytevector->string (v::nnvector* start::int end::int) :static
+  (let* ([len::int (@ v->size)])
+    (SCM_CHECK_START_END start end len)
+    (return (Scm_MakeString (+ (cast char* (@ v->buf)) start)
+                            (- end start) -1 SCM_STRING_COPYING))))
+
+(define-cfn wordvector->string (v::nnvector* start::int end::int) :static
+  (let* ([len::int (NNVECTOR_SIZE2LENGTH (@ v->type) (@ v->size))]
+         [s (Scm_MakeOutputStringPort FALSE)])
+    (SCM_CHECK_START_END start end len)
+    (let* ([eltp::ScmInt32* (cast ScmInt32* (@ v->buf))])
+      (while (< start end)
+        (let* ([ch::ScmChar (cast ScmChar (aref eltp (post++ start)))])
+          (Scm_PutcUnsafe ch (SCM_PORT s)))))
+    (return (Scm_GetOutputStringUnsafe (SCM_PORT s) 0))))
+
+(define-cproc nnvector->string (v::<nnvector> 
+                                :optional (start::<fixnum> 0) (end::<fixnum> -1)) :: <top>
+  (cond
+    [(== (@ v.type) TYPE_U8) (result (bytevector->string (& v) start end))]
+    [(== (@ v.type) TYPE_U32) (result (wordvector->string (& v) start end))]
+    [else (Scm_Error "TYPE_U8 or TYPE_U32 required, but got %S" (@ v.type))]))
+
 
 "
 #define SET_NNVECTOR_DATA(obj, v_buf, v_type, v_size) \
