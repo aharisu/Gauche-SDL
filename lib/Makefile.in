@@ -31,7 +31,7 @@ GENERATED = sdl.scm
 CONFIG_GENERATED = Makefile
 
 all : $(TARGET)
-	@cd sdl ; $(MAKE) all
+	cd sdl ; $(MAKE) all
 
 sdl.scm: $(STUBDIR)/sdl-lib.stub sdl.template
 	$(GOSH) -I$(SCRIPTDIR) $(GENDOC) -s $(STUBDIR)/sdl-lib.stub -t sdl.template -o sdl.scm
@@ -40,21 +40,21 @@ test :
 
 install :
 	$(INSTALL) -m 444 -T $(GAUCHE_PKGLIBDIR) $(SCMFILES) 
-	@cd sdl ; $(MAKE) install
+	cd sdl ; $(MAKE) install
 
 uninstall :
 	$(INSTALL) -U $(GAUCHE_PKGLIBDIR) $(SCMFILES) 
-	@cd sdl ; $(MAKE) install
+	cd sdl ; $(MAKE) uninstall
 
 clean :
 	rm -rf core *~ $(GENERATED)
-	@cd sdl ; $(MAKE) clean
-
-distclean : clean
-	rm -rf $(CONFIG_GENERATED)
-	@cd sdl ; $(MAKE) distclean
+	cd sdl ; $(MAKE) clean
 
 realclean : clean
 	rm -rf $(CONFIG_GENERATED)
-	@cd sdl ; $(MAKE) realclean
+	cd sdl ; $(MAKE) realclean
+
+maintainer-clean : clean
+	rm -rf $(CONFIG_GENERATED)
+	cd sdl ; $(MAKE) maintainer-clean
 

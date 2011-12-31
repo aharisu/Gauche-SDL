@@ -39,3 +39,8 @@ realclean : clean
 	cd lib; $(MAKE) realclean
 	rm -rf configure $(CONFIG_GENERATED)
 
+maintainer-clean : clean
+	cd src; $(MAKE) maintainer-clean
+	cd lib; $(MAKE) maintainer-clean
+	rm -rf $(CONFIG_GENERATED) configure VERSION
+

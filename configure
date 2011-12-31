@@ -3570,7 +3570,7 @@ if test "x$ac_cv_header_SDL_SDL_framerate_h" = x""yes; then :
   cat >>confdefs.h <<_ACEOF
 #define HAVE_SDL_SDL_FRAMERATE_H 1
 _ACEOF
- HAVE_SDL_GFX=1
+ HAVE_SDL_GFX=gfx
 fi
 
 done
@@ -3584,7 +3584,7 @@ if test "x$ac_cv_header_SDL_SDL_image_h" = x""yes; then :
   cat >>confdefs.h <<_ACEOF
 #define HAVE_SDL_SDL_IMAGE_H 1
 _ACEOF
- HAVE_SDL_IMAGE=1
+ HAVE_SDL_IMAGE=image
 fi
 
 done
@@ -3598,7 +3598,7 @@ if test "x$ac_cv_header_SDL_SDL_mixer_h" = x""yes; then :
   cat >>confdefs.h <<_ACEOF
 #define HAVE_SDL_SDL_MIXER_H 1
 _ACEOF
- HAVE_SDL_MIXER=1
+ HAVE_SDL_MIXER=mixer
 fi
 
 done
@@ -3612,7 +3612,7 @@ if test "x$ac_cv_header_SDL_SDL_ttf_h" = x""yes; then :
   cat >>confdefs.h <<_ACEOF
 #define HAVE_SDL_SDL_TTF_H 1
 _ACEOF
- HAVE_SDL_TTF=1
+ HAVE_SDL_TTF=ttf
 fi
 
 done
@@ -3626,7 +3626,7 @@ if test "x$ac_cv_header_SDL_SDL_net_h" = x""yes; then :
   cat >>confdefs.h <<_ACEOF
 #define HAVE_SDL_SDL_NET_H 1
 _ACEOF
- HAVE_SDL_NET=1
+ HAVE_SDL_NET=net
 fi
 
 done
@@ -3664,7 +3664,7 @@ $as_echo "$as_me: creating ${PACKAGE_NAME}.gpd" >&6;}
   -configure "./configure $GAUCHE_PACKAGE_CONFIGURE_ARGS"
 
 echo $PACKAGE_VERSION > VERSION
-ac_config_files="$ac_config_files Makefile src/Makefile src/image/Makefile src/ttf/Makefile src/mixer/Makefile src/gfx/Makefile src/net/Makefile lib/Makefile lib/sdl/Makefile"
+ac_config_files="$ac_config_files Makefile src/Makefile src/image/Makefile src/ttf/Makefile src/mixer/Makefile src/gfx/Makefile src/net/Makefile lib/Makefile lib/sdl/Makefile lib/sdl/net/Makefile"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -4380,6 +4380,7 @@ do
     "src/net/Makefile") CONFIG_FILES="$CONFIG_FILES src/net/Makefile" ;;
     "lib/Makefile") CONFIG_FILES="$CONFIG_FILES lib/Makefile" ;;
     "lib/sdl/Makefile") CONFIG_FILES="$CONFIG_FILES lib/sdl/Makefile" ;;
+    "lib/sdl/net/Makefile") CONFIG_FILES="$CONFIG_FILES lib/sdl/net/Makefile" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5 ;;
   esac

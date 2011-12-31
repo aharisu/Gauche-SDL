@@ -24,16 +24,21 @@ SCRIPTDIR=@SCRIPTDIR@
 GENDOC="@GENDOC@"
 
 
+HAVE_SDL_GFX = @HAVE_SDL_GFX@
+HAVE_SDL_IMAGE = @HAVE_SDL_IMAGE@
+HAVE_SDL_MIXER = @HAVE_SDL_MIXER@
+HAVE_SDL_TTF = @HAVE_SDL_TTF@
+HAVE_SDL_NET = @HAVE_SDL_NET@
+
 #SCMFILES = color.scm gfx.scm image.scm mixer.scm ttf.scm
-SCMFILES = image.scm ttf.scm mixer.scm gfx.scm net.scm
-GENERATED = image.scm ttf.scm mixer.scm gfx.scm net.scm
+HAVE_SDL_H = $(HAVE_SDL_GFX) $(HAVE_SDL_IMAGE) $(HAVE_SDL_MIXER) $(HAVE_SDL_TTF) $(HAVE_SDL_NET)
+SCMFILES = $(addsuffix .scm,$(HAVE_SDL_H))
+GENERATED = $(addsuffix .scm,$(HAVE_SDL_H))
 
 CONFIG_GENERATED = Makefile
 
 all : $(SCMFILES)
-
-#color.scm: gen-colors.scm
-#	$(GOSH) ./gen-colors.scm
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) all); fi
 
 image.scm: $(STUBDIR)/image/sdl-imagelib.stub image.template
 	$(GOSH) -I$(SCRIPTDIR) $(GENDOC) -s $(STUBDIR)/image/sdl-imagelib.stub -t image.template -o image.scm
@@ -52,7 +57,7 @@ net.scm: $(STUBDIR)/net/sdl-netlib.stub net.template
 
 test :
 
-install : all
+install :
 	@if test ! -d $(GAUCHE_PKGLIBDIR)/sdl ; then \
 	  $(INSTALL) -d $(GAUCHE_PKGLIBDIR)/sdl; \
 	fi
@@ -62,12 +67,19 @@ install : all
 	  fi; \
 	done
 
+uninstall :
+	@for f in $(SCMFILES) _end; do \
+	  if test $$f != _end; then \
+	    $(INSTALL) -U $(GAUCHE_PKGLIBDIR)/sdl $$f; \
+	  fi; \
+	done
+
 clean :
 	rm -rf core *~ $(GENERATED)
 
-distclean : clean
+realclean : clean
 	rm -rf $(CONFIG_GENERATED)
 
-realclean : clean
+maintainer-clean : clean
 	rm -rf $(CONFIG_GENERATED)
 

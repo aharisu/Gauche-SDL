@@ -59,19 +59,19 @@ dnl Check for headers.
 dnl Add your macro calls to check required headers, if you have any.
 AC_CHECK_HEADER(SDL/SDL.h, , [AC_MSG_ERROR([Not found SDL/SDL.h])], )
 
-AC_CHECK_HEADERS(SDL/SDL_framerate.h, [HAVE_SDL_GFX=1], , )
+AC_CHECK_HEADERS(SDL/SDL_framerate.h, [HAVE_SDL_GFX=gfx], , )
 AC_SUBST(HAVE_SDL_GFX)
 
-AC_CHECK_HEADERS(SDL/SDL_image.h, [HAVE_SDL_IMAGE=1], , )
+AC_CHECK_HEADERS(SDL/SDL_image.h, [HAVE_SDL_IMAGE=image], , )
 AC_SUBST(HAVE_SDL_IMAGE)
 
-AC_CHECK_HEADERS(SDL/SDL_mixer.h, [HAVE_SDL_MIXER=1], , )
+AC_CHECK_HEADERS(SDL/SDL_mixer.h, [HAVE_SDL_MIXER=mixer], , )
 AC_SUBST(HAVE_SDL_MIXER)
 
-AC_CHECK_HEADERS(SDL/SDL_ttf.h, [HAVE_SDL_TTF=1], , )
+AC_CHECK_HEADERS(SDL/SDL_ttf.h, [HAVE_SDL_TTF=ttf], , )
 AC_SUBST(HAVE_SDL_TTF)
 
-AC_CHECK_HEADERS(SDL/SDL_net.h, [HAVE_SDL_NET=1], , )
+AC_CHECK_HEADERS(SDL/SDL_net.h, [HAVE_SDL_NET=net], , )
 AC_SUBST(HAVE_SDL_NET)
 
 dnl Check for other programs.
@@ -107,5 +107,5 @@ AC_MSG_NOTICE([creating ${PACKAGE_NAME}.gpd])
 
 dnl Output
 echo $PACKAGE_VERSION > VERSION
-AC_OUTPUT(Makefile src/Makefile src/image/Makefile src/ttf/Makefile src/mixer/Makefile src/gfx/Makefile src/net/Makefile lib/Makefile lib/sdl/Makefile)
+AC_OUTPUT(Makefile src/Makefile src/image/Makefile src/ttf/Makefile src/mixer/Makefile src/gfx/Makefile src/net/Makefile lib/Makefile lib/sdl/Makefile lib/sdl/net/Makefile)
 

@@ -78,16 +78,16 @@ sdl_type.gen.c sdl_type.gen.h sdl_type.gen.stub.header: sdl_type.scm
 gauche-sdl.$(SOEXT): $(gauche_sdl_SRCS)
 	$(GAUCHE_PACKAGE) compile --local=$(LOCAL_PATHS) --verbose --libs="$(SDL_LIBS)" gauche-sdl $(gauche_sdl_SRCS)
 
-check : all
+test : all
 	@rm -f test.log
 	$(GOSH) -I. -I$(srcdir) $(srcdir)/test.scm > test.log
-	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) check); fi
-	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) check); fi
-	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) check); fi
-	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) check); fi
-	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) check); fi
+	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) test); fi
+	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) test); fi
+	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) test); fi
+	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) test); fi
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) test); fi
 
-install : all
+install :
 	$(INSTALL) -m 444 -T $(GAUCHE_PKGINCDIR) $(HEADERS)
 	$(INSTALL) -m 555 -T $(GAUCHE_PKGARCHDIR) $(ARCHFILES)
 	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) install); fi
@@ -114,13 +114,13 @@ clean :
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) clean); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) clean); fi
 
-distclean : clean
+realclean : clean
 	rm -rf $(CONFIG_GENERATED)
-	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) distclean); fi
-	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) distclean); fi
-	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) distclean); fi
-	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) distclean); fi
-	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) distclean); fi
+	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) realclean); fi
+	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) realclean); fi
+	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) realclean); fi
+	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) realclean); fi
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) realclean); fi
 
 maintainer-clean : clean
 	rm -rf $(CONFIG_GENERATED) configure VERSION
