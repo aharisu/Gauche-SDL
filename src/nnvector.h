@@ -14,6 +14,9 @@
 #define TYPE_U8 (NN_SIZE_1 | NN_SIGN_U)
 #define TYPE_U16 (NN_SIZE_2 | NN_SIGN_U)
 #define TYPE_U32 (NN_SIZE_4 | NN_SIGN_U)
+#define TYPE_S8 (NN_SIZE_1 | NN_SIGN_S)
+#define TYPE_S16 (NN_SIZE_2 | NN_SIGN_S)
+#define TYPE_S32 (NN_SIZE_4 | NN_SIGN_S)
 #define TYPE_BOOLEAN (NN_SIZE_1 | NN_SIGN_BOOLEAN)
 
 #define NNVECTOR_LENGTH2SIZE(type, len) (((type) & NN_SIZE_MASK) * (len))

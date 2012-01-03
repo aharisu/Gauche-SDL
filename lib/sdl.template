@@ -21,9 +21,13 @@
            [i (or start 0)]
            [ref (let ([type (slot-ref v 'type)])
                   (cond
-                    [(eq? type u8) un8vector-ref]
-                    [(eq? type u16) un16vector-ref]
-                    [(eq? type u32) un32vector-ref]
+                    [(eq? type nn-u8) nnu8vector-ref]
+                    [(eq? type nn-u16) nnu16vector-ref]
+                    [(eq? type nn-u32) nnu32vector-ref]
+                    [(eq? type nn-s8) nns8vector-ref]
+                    [(eq? type nn-s16) nns16vector-ref]
+                    [(eq? type nn-s32) nns32vector-ref]
+                    [(eq? type nn-boolean) nnbvector-ref]
                     [else (raise (condition
                                    (<error> (message "illegal type."))))]))])
       (proc (lambda () (>= i len))
