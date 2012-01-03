@@ -33,7 +33,7 @@ gauche_SDL_LIBS = @SDL_LIBS@
 # Module-specific stuff
 PACKAGE = @PACKAGE@
 
-ARCHFILES = gauche-sdl-net.$(SOEXT)
+ARCHFILES = gauche-sdl-net.$(SOEXT) gauche-sdl-netext.$(SOEXT)
 HEADERS   = 
 
 TARGET    = $(ARCHFILES)
@@ -48,9 +48,15 @@ gauche_sdl_net_SRCS = gauche-sdl-net.c \
 											sdl-netlib.c	\
 											net_type.gen.c
 
+gauche_sdl_netext_SRCS = gauche-sdl-netext.c \
+												 sdl-netextlib.c
+
 sdl_STUB_TYPE_HDRS = ../sdl_type.gen.stub.header \
 										 ../macro.stub.header \
 										 net_type.gen.stub.header
+
+netext_STUB_TYPE_HDRS = ../sdl_type.gen.stub.header \
+												../macro.stub.header
 
 all : $(TARGET)
 
@@ -69,6 +75,13 @@ net_type.gen.c net_type.gen.h net_type.gen.stub.header: net_type.scm
 #compile net
 gauche-sdl-net.$(SOEXT): $(gauche_sdl_net_SRCS) ../gauche-sdl.$(SOEXT)
 	$(GAUCHE_PACKAGE) compile --local=$(LOCAL_PATHS) --verbose --ldflags="$(LDFLAGS) $(SDL_LDFLAGS)" --libs="$(SDL_LIBS) $(gauche_SDL_LIBS)" gauche-sdl-net $(gauche_sdl_net_SRCS)
+
+
+sdl-netextlib.stub: $(netext_STUB_TYPE_HDRS)
+
+#compile net-ext
+gauche-sdl-netext.$(SOEXT): $(gauche_sdl_netext_SRCS) ../gauche-sdl.$(SOEXT)
+	$(GAUCHE_PACKAGE) compile --local=$(LOCAL_PATHS) --verbose --ldflags="$(LDFLAGS) $(SDL_LDFLAGS)" --libs="$(SDL_LIBS) $(gauche_SDL_LIBS)" gauche-sdl-netext $(gauche_sdl_netext_SRCS)
 
 test : all
 	@rm -f test.log
