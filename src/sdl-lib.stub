@@ -172,15 +172,17 @@
 (define-cproc nn16vector-ref (vec::<nnvector> index::<int>
                              :optional (offset-in-bytes::<fixnum> 0) fallback) ::<uint16>
   (let* ([num :: Uint16])
-    (memcpy (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 2 index))
-            (& num) 2)
+    (memcpy (& num)
+            (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 2 index))
+             2)
   (result num)))
 
 (define-cproc nn32vector-ref (vec::<nnvector> index::<int>
                              :optional (offset-in-bytes::<fixnum> 0) fallback) ::<uint16>
   (let* ([num :: Uint32])
-    (memcpy (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 4 index))
-            (& num) 4)
+    (memcpy (& num)
+            (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 4 index))
+             4)
   (result num)))
 
 (define-cproc nnbvector-ref (vec::<nnvector> index::<int> :optional fallback) ::<boolean>
