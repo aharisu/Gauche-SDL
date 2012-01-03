@@ -17,17 +17,23 @@
 (define-constant nn-u8 257)
 (define-constant nn-u16 258)
 (define-constant nn-u32 260)
+(define-constant nn-s8 513)
+(define-constant nn-s16 514)
+(define-constant nn-s32 516)
 (define-constant nn-boolean 769)
 
 (define-cise-stmt un-case
-  [(_ type u8-stmt u16-stmt u32-stmt ub-stmt)
+  [(_ type u8-stmt u16-stmt u32-stmt s8-stmt s16-stmt s32-stmt ub-stmt)
   `(case ,type
      [(TYPE_U8) ,u8-stmt]
      [(TYPE_U16) ,u16-stmt]
      [(TYPE_U32) ,u32-stmt]
+     [(TYPE_S8) ,s8-stmt]
+     [(TYPE_S16) ,s16-stmt]
+     [(TYPE_S32) ,s32-stmt]
      [(TYPE_BOOLEAN) ,ub-stmt]
      [else (Scm_Error "type mismatch")])]
-  [(_ type obj val u8-stmt u16-stmt u32-stmt ub-stmt)
+  [(_ type obj val u8-stmt u16-stmt u32-stmt s8-stmt s16-stmt s32-stmt ub-stmt)
   `(case ,type
      [(TYPE_U8) 
       (begin
@@ -47,6 +53,24 @@
           (Scm_Error "<uint32> required, but got %S." ,obj))
         (set! ,val (unboxing ,obj <uint32>))
         ,u32-stmt)]
+     [(TYPE_S8) 
+      (begin
+        (unless (is-type? ,obj <int8>)
+          (Scm_Error "<int8> required, but got %S." ,obj))
+        (set! ,val (unboxing ,obj <int8>))
+        ,s8-stmt)]
+     [(TYPE_S16) 
+      (begin
+        (unless (is-type? ,obj <int16>)
+          (Scm_Error "<int16> required, but got %S." ,obj))
+        (set! ,val (unboxing ,obj <int16>))
+        ,s16-stmt)]
+     [(TYPE_S32) 
+      (begin
+        (unless (is-type? ,obj <int32>)
+          (Scm_Error "<int32> required, but got %S." ,obj))
+        (set! ,val (unboxing ,obj <int32>))
+        ,s32-stmt)]
      [(TYPE_BOOLEAN)
       (begin
         (unless (is-type? ,obj <boolean>)
@@ -81,31 +105,51 @@
            nnvector* vec = &(SCM_NNVECTOR_DATA(obj));
            int len = NNVECTOR_SIZE2LENGTH(vec->type, vec->size);
 
-           if(vec->type == TYPE_BOOLEAN) {
-             Scm_Printf(port, \"#nnb(\");
-           } else {
-             Scm_Printf(port, \"#nn%d(\", (vec->type & NN_SIZE_MASK) * 8);
-           }
            switch(vec->type) {
            case TYPE_U8:
+             Scm_Printf(port, \"#nnu8(\");
              for(i = 0;i < len - 1;++i) {
                    Scm_Printf(port, \"%u \", vec->buf[i]);
              }
              Scm_Printf(port, \"%u)\", vec->buf[i]);
              break;
+           case TYPE_S8:
+             Scm_Printf(port, \"#nns8(\");
+             for(i = 0;i < len - 1;++i) {
+                   Scm_Printf(port, \"%d \", vec->buf[i]);
+             }
+             Scm_Printf(port, \"%d)\", vec->buf[i]);
+             break;
            case TYPE_U16:
+             Scm_Printf(port, \"#nnu16(\");
              for(i = 0;i < len - 1;++i) {
                    Scm_Printf(port, \"%u \", ((unsigned short*)vec->buf)[i]);
              }
              Scm_Printf(port, \"%u)\", ((unsigned short*)vec->buf)[i]);
             break;
+           case TYPE_S16:
+             Scm_Printf(port, \"#nns16(\");
+             for(i = 0;i < len - 1;++i) {
+                   Scm_Printf(port, \"%d \", ((unsigned short*)vec->buf)[i]);
+             }
+             Scm_Printf(port, \"%d)\", ((unsigned short*)vec->buf)[i]);
+            break;
            case TYPE_U32:
+             Scm_Printf(port, \"#nnu32(\");
              for(i = 0;i < len - 1;++i) {
                    Scm_Printf(port, \"%u \", ((unsigned long*)vec->buf)[i]);
              }
              Scm_Printf(port, \"%u)\", ((unsigned long*)vec->buf)[i]);
             break;
+           case TYPE_S32:
+             Scm_Printf(port, \"#nns32(\");
+             for(i = 0;i < len - 1;++i) {
+                   Scm_Printf(port, \"%d \", ((unsigned long*)vec->buf)[i]);
+             }
+             Scm_Printf(port, \"%d)\", ((unsigned long*)vec->buf)[i]);
+            break;
           case TYPE_BOOLEAN:
+             Scm_Printf(port, \"#nnb(\");
              for(i = 0;i < len - 1;++i) {
                    Scm_Printf(port, \"%s \", vec->buf[i] != 0 ? \"#t\" : \"#f\");
              }
@@ -137,20 +181,37 @@
            (set! (aref (cast Uint8* (@ vec.buf)) index) n)
            (set! (aref (cast Uint16* (@ vec.buf)) index) n)
            (set! (aref (cast Uint32* (@ vec.buf)) index) n)
+           (set! (aref (cast Sint8* (@ vec.buf)) index) n)
+           (set! (aref (cast Sint16* (@ vec.buf)) index) n)
+           (set! (aref (cast Sint32* (@ vec.buf)) index) n)
            (set! (aref (cast Uint8* (@ vec.buf)) index) n))))
 
-(define-cproc nn8vector-set! (vec::<nnvector> index::<int> num::<uint8>
+(define-cproc nnu8vector-set! (vec::<nnvector> index::<int> num::<uint8>
                               :optional (offset-in-bytes::<fixnum> 0)) ::<void>
   (set! (aref (+ (cast Uint8* (@ vec.buf)) offset-in-bytes) index) num))
 
-(define-cproc nn16vector-set! (vec::<nnvector> index::<int> num::<uint16>
+(define-cproc nnu16vector-set! (vec::<nnvector> index::<int> num::<uint16>
                                :optional (offset-in-bytes::<fixnum> 0)) ::<void>
   (memcpy (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 2 index))
           (& num) 2))
 
-(define-cproc nn32vector-set! (vec::<nnvector> index::<int> num::<uint32>
+(define-cproc nnu32vector-set! (vec::<nnvector> index::<int> num::<uint32>
                                :optional (offset-in-bytes::<fixnum> 0)) ::<void>
   (memcpy (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 4 index))
+          (& num) 4))
+
+(define-cproc nns8vector-set! (vec::<nnvector> index::<int> num::<int8>
+                              :optional (offset-in-bytes::<fixnum> 0)) ::<void>
+  (set! (aref (+ (cast Sint8* (@ vec.buf)) offset-in-bytes) index) num))
+
+(define-cproc nns16vector-set! (vec::<nnvector> index::<int> num::<int16>
+                               :optional (offset-in-bytes::<fixnum> 0)) ::<void>
+  (memcpy (+ (cast Sint8* (@ vec.buf)) offset-in-bytes (* 2 index))
+          (& num) 2))
+
+(define-cproc nns32vector-set! (vec::<nnvector> index::<int> num::<int32>
+                               :optional (offset-in-bytes::<fixnum> 0)) ::<void>
+  (memcpy (+ (cast Sint8* (@ vec.buf)) offset-in-bytes (* 4 index))
           (& num) 4))
 
 (define-cproc nnbvector-set! (vec::<nnvector> index::<int> b::<boolean>) ::<void>
@@ -163,24 +224,49 @@
            (result (boxing (aref (cast Uint8* (@ vec.buf)) index) <uint8>))
            (result (boxing (aref (cast Uint16* (@ vec.buf)) index) <uint16>))
            (result (boxing (aref (cast Uint32* (@ vec.buf)) index) <uint32>))
+           (result (boxing (aref (cast Sint8* (@ vec.buf)) index) <int8>))
+           (result (boxing (aref (cast Sint16* (@ vec.buf)) index) <int16>))
+           (result (boxing (aref (cast Sint32* (@ vec.buf)) index) <int32>))
            (result (boxing (aref (cast Uint8* (@ vec.buf)) index) <boolean>))))
 
-(define-cproc nn8vector-ref (vec::<nnvector> index::<int> 
+(define-cproc nnu8vector-ref (vec::<nnvector> index::<int> 
                              :optional (offset-in-bytes::<fixnum> 0) fallback) ::<uint8>
   (result (aref (+ (cast Uint8* (@ vec.buf)) offset-in-bytes) index)))
 
-(define-cproc nn16vector-ref (vec::<nnvector> index::<int>
+(define-cproc nnu16vector-ref (vec::<nnvector> index::<int>
                              :optional (offset-in-bytes::<fixnum> 0) fallback) ::<uint16>
   (let* ([num :: Uint16])
-    (memcpy (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 2 index))
-            (& num) 2)
+    (memcpy (& num)
+            (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 2 index))
+             2)
   (result num)))
 
-(define-cproc nn32vector-ref (vec::<nnvector> index::<int>
-                             :optional (offset-in-bytes::<fixnum> 0) fallback) ::<uint16>
+(define-cproc nnu32vector-ref (vec::<nnvector> index::<int>
+                             :optional (offset-in-bytes::<fixnum> 0) fallback) ::<uint32>
   (let* ([num :: Uint32])
-    (memcpy (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 4 index))
-            (& num) 4)
+    (memcpy (& num)
+            (+ (cast Uint8* (@ vec.buf)) offset-in-bytes (* 4 index))
+             4)
+  (result num)))
+
+(define-cproc nns8vector-ref (vec::<nnvector> index::<int> 
+                             :optional (offset-in-bytes::<fixnum> 0) fallback) ::<int8>
+  (result (aref (+ (cast Sint8* (@ vec.buf)) offset-in-bytes) index)))
+
+(define-cproc nns16vector-ref (vec::<nnvector> index::<int>
+                             :optional (offset-in-bytes::<fixnum> 0) fallback) ::<int16>
+  (let* ([num :: Sint16])
+    (memcpy (& num)
+            (+ (cast Sint8* (@ vec.buf)) offset-in-bytes (* 2 index))
+            2)
+  (result num)))
+
+(define-cproc nns32vector-ref (vec::<nnvector> index::<int>
+                             :optional (offset-in-bytes::<fixnum> 0) fallback) ::<int32>
+  (let* ([num :: Sint32])
+    (memcpy (& num)
+            (+ (cast Sint8* (@ vec.buf)) offset-in-bytes (* 4 index))
+            4)
   (result num)))
 
 (define-cproc nnbvector-ref (vec::<nnvector> index::<int> :optional fallback) ::<boolean>
@@ -231,6 +317,12 @@
         (for [() (>= i start) (pre-- i)]
              (set! c (Scm_Cons (boxing (aref (cast Uint32* (@ vec.buf)) i) <uint32>) c)))
         (for [() (>= i start) (pre-- i)]
+             (set! c (Scm_Cons (boxing (aref (cast Sint8* (@ vec.buf)) i) <int8>) c)))
+        (for [() (>= i start) (pre-- i)]
+             (set! c (Scm_Cons (boxing (aref (cast Sint16* (@ vec.buf)) i) <int16>) c)))
+        (for [() (>= i start) (pre-- i)]
+             (set! c (Scm_Cons (boxing (aref (cast Sint32* (@ vec.buf)) i) <int32>) c)))
+        (for [() (>= i start) (pre-- i)]
              (set! c (Scm_Cons (boxing (aref (cast Uint8* (@ vec.buf)) i) <boolean>) c))))
       (result c))))
 
@@ -247,6 +339,12 @@
              (set! (SCM_VECTOR_ELEMENT v i) (boxing (aref (cast Uint16* (@ vec.buf)) i) <uint16>)))
         (for [() (< i end) (pre++ i)]
              (set! (SCM_VECTOR_ELEMENT v i) (boxing (aref (cast Uint32* (@ vec.buf)) i) <uint32>)))
+        (for [() (< i end) (pre++ i)]
+             (set! (SCM_VECTOR_ELEMENT v i) (boxing (aref (cast Sint8* (@ vec.buf)) i) <int8>)))
+        (for [() (< i end) (pre++ i)]
+             (set! (SCM_VECTOR_ELEMENT v i) (boxing (aref (cast Sint16* (@ vec.buf)) i) <int16>)))
+        (for [() (< i end) (pre++ i)]
+             (set! (SCM_VECTOR_ELEMENT v i) (boxing (aref (cast Sint32* (@ vec.buf)) i) <int32>)))
         (for [() (< i end) (pre++ i)]
              (set! (SCM_VECTOR_ELEMENT v i) (boxing (aref (cast Uint8* (@ vec.buf)) i) <boolean>))))
       (result v))))
@@ -271,6 +369,18 @@
           (for [() (< i end) (pre++ i)]
                (set! (SCM_U32VECTOR_ELEMENT v i) (aref (cast Uint32* (@ vec.buf)) i))))
         (begin
+          (set! v (Scm_MakeS8Vector (- end start) 0))
+          (for [() (< i end) (pre++ i)]
+               (set! (SCM_S8VECTOR_ELEMENT v i) (aref (cast Sint8* (@ vec.buf)) i))))
+        (begin
+          (set! v (Scm_MakeS16Vector (- end start) 0))
+          (for [() (< i end) (pre++ i)]
+               (set! (SCM_S16VECTOR_ELEMENT v i) (aref (cast Sint16* (@ vec.buf)) i))))
+        (begin
+          (set! v (Scm_MakeS32Vector (- end start) 0))
+          (for [() (< i end) (pre++ i)]
+               (set! (SCM_S32VECTOR_ELEMENT v i) (aref (cast Sint32* (@ vec.buf)) i))))
+        (begin
           (set! v (Scm_MakeU8Vector (- end start) 0))
           (for [() (< i end) (pre++ i)]
                (set! (SCM_U8VECTOR_ELEMENT v i) (aref (cast Uint8* (@ vec.buf)) i)))))
@@ -283,6 +393,9 @@
         (set! v (Scm_MakeU8VectorFromArrayShared len (cast Uint8* (@ vec.buf))))
         (set! v (Scm_MakeU16VectorFromArrayShared len (cast Uint16* (@ vec.buf))))
         (set! v (Scm_MakeU32VectorFromArrayShared len (cast Uint32* (@ vec.buf))))
+        (set! v (Scm_MakeS8VectorFromArrayShared len (cast Sint8* (@ vec.buf))))
+        (set! v (Scm_MakeS16VectorFromArrayShared len (cast Sint16* (@ vec.buf))))
+        (set! v (Scm_MakeS32VectorFromArrayShared len (cast Sint32* (@ vec.buf))))
         (set! v (Scm_MakeU8VectorFromArrayShared len (cast Uint8* (@ vec.buf)))))
       (result v))))
 
