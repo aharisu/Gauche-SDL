@@ -144,19 +144,77 @@ int SDL_CollidePixel(SDL_Surface *as , int ax , int ay ,
 	int ystart = SDL_COLLIDE_MAX(ay,by);
 	int yend = SDL_COLLIDE_MIN(ay1,by1);
 
+  if(SDL_MUSTLOCK(as))
+   SDL_LockSurface(as);
+  if(SDL_MUSTLOCK(bs))
+   SDL_LockSurface(bs);
+
+  int a_bpp = as->format->BytesPerPixel;
+  int b_bpp = bs->format->BytesPerPixel;
+
+  int ret = 0;
 	for(int y = ystart ; y <= yend ; y += skip)
 	{
 		for(int x = xstart ; x <= xend ; x += skip)
 		{
-			/*compute offsets for surface
-			before pass to TransparentPixel test*/
-			if(!SDL_CollideTransparentPixel(as , x-ax , y-ay)
-			&& !SDL_CollideTransparentPixel(bs , x-bx , y-by))
-				return 1;
+      Uint8* a_p = (Uint8*)as->pixels + (y-ay) * as->pitch + (x-ax) * a_bpp;
+      Uint8* b_p = (Uint8*)bs->pixels + (y-by) * bs->pitch + (x-bx) * b_bpp;
+
+      Uint32 a_pixelcolor;
+      Uint32 b_pixelcolor;
+      switch(a_bpp)
+      {
+        case 1:
+          a_pixelcolor = *a_p;
+          break;
+        case 2:
+          a_pixelcolor = *(Uint16*)a_p;
+          break;
+        case 3:
+          if(SDL_BYTEORDER == SDL_BIG_ENDIAN)
+            a_pixelcolor = a_p[0] << 16 | a_p[1] << 8 | a_p[2];
+          else
+            a_pixelcolor = a_p[0] | a_p[1] << 8 | a_p[2] << 16;
+          break;
+        case 4:
+          a_pixelcolor = *(Uint32*)a_p;
+          break;
+      }
+      switch(b_bpp)
+      {
+        case 1:
+          b_pixelcolor = *b_p;
+          break;
+        case 2:
+          b_pixelcolor = *(Uint16*)b_p;
+          break;
+        case 3:
+          if(SDL_BYTEORDER == SDL_BIG_ENDIAN)
+            b_pixelcolor = b_p[0] << 16 | b_p[1] << 8 | b_p[2];
+          else
+            b_pixelcolor = b_p[0] | b_p[1] << 8 | b_p[2] << 16;
+          break;
+        case 4:
+          b_pixelcolor = *(Uint32*)b_p;
+          break;
+      }
+
+      if(a_pixelcolor != as->format->colorkey &&
+          b_pixelcolor != bs->format->colorkey)
+      {
+        ret = 1;
+        goto FINISH;
+      }
 		}
 	}
+FINISH:
 
-	return 0;
+  if(SDL_MUSTLOCK(as))
+   SDL_UnlockSurface(as);
+  if(SDL_MUSTLOCK(bs))
+   SDL_UnlockSurface(bs);
+
+	return ret;
 }
 
 /*
