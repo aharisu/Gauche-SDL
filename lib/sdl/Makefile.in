@@ -38,7 +38,6 @@ GENERATED = $(addsuffix .scm,$(HAVE_SDL_H))
 CONFIG_GENERATED = Makefile
 
 all : $(SCMFILES)
-	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) all); fi
 
 image.scm: $(STUBDIR)/image/sdl-imagelib.stub image.template
 	$(GOSH) -I$(SCRIPTDIR) $(GENDOC) -s $(STUBDIR)/image/sdl-imagelib.stub -t image.template -o image.scm
