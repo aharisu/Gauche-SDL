@@ -1,0 +1,90 @@
+
+"
+#include \"gauche-sdl-collide.h\"
+#include \"../sdl_type.gen.h\"
+"
+
+(include "../sdl_type.gen.stub.header")
+(include "../macro.stub.header")
+
+;;;;;
+;; SDL surface test if offset (u,v) is a transparent pixel
+(define-cproc cld-transparent-pixel (surface::<sdl-surface> u::<fixnum> v::<fixnum>) :: <boolean>
+  (result (SDL_CollideTransparentPixel surface u v)))
+
+;;;;;
+;; Pixel-perfect collision between two surfaces.
+;;
+;; @param as the first surface to check
+;; @param ax the top-left X-coordinate of surface @a SA
+;; @param ay the top-left Y-coordinate of surface @a SA
+;; @param bs the second surface to check
+;; @param bx the top-left X-coordinate of surface @a SB
+;; @param by the top-left Y-coordinate of surface @a SB
+;; @param skip how many pixels the looping test should skip.
+;;             1 is a truly perfect pixel test, but a value
+;;             of 4 should be fine.
+;;             this parameter is here to speed up the test at
+;;             the expense of accuracy.
+;;
+;; @return #t on collision, #f otherwise
+(define-cproc cld-pixel (as::<sdl-surface> ax::<fixnum> ay::<fixnum>
+                         bs::<sdl-surface> bx::<fixnum> by::<fixnum>
+                         :optional (skip::<fixnum> 4)) :: <boolean>
+  (ENSURE_NOT_NULL as)
+  (ENSURE_NOT_NULL bs)
+  (result (SDL_CollidePixel as ax ay bs bx by skip)))
+
+;;;;;
+;; Bounding-box collision between two surfaces.
+;;
+;; @param as the first surface to check
+;; @param ax the top-left X-coordinate of surface @a SA
+;; @param ay the top-left Y-coordinate of surface @a SA
+;; @param bs the second surface to check
+;; @param bx the top-left X-coordinate of surface @a SB
+;; @param by the top-left Y-coordinate of surface @a SB
+;;
+;; @return #t on collision, #f otherwise
+(define-cproc cld-bounding-box-surface (as::<sdl-surface> ax::<fixnum> ay::<fixnum>
+                                        bs::<sdl-surface> bx::<fixnum> by::<fixnum>) :: <boolean>
+  (ENSURE_NOT_NULL as)
+  (ENSURE_NOT_NULL bs)
+  (result (SDL_CollideBoundingBoxSurface as ax ay bs bx by)))
+
+;;;;;
+;; Bounding-box collision between two rectangles.
+;;
+;; @param a the first rectangle to check
+;; @param b the second rectangle to check
+;;
+;; @return #t on collision, #f otherwise
+(define-cproc cld-bounding-box-rect (a::<sdl-rect> b::<sdl-rect>) :: <boolean>
+  (result (SDL_CollideBoundingBoxRect a b)))
+
+;;;;;
+;; tests whether 2 circles intersect
+;;
+;; circle1 : centre (x1,y1) with radius r1
+;; circle2 : centre (x2,y2) with radius r2
+(define-cproc cld-bounding-circle (cx1::<fixnum> cy1::<fixnum> r1::<fixnum>
+                                   cx2::<fixnum> cy2::<fixnum> r2::<fixnum>
+                                   offset::<fixnum>) :: <boolean>
+  (result (SDL_CollideBoundingCircle  cx1 cy1 r1 cx2 cy2 r2 offset)))
+
+;;;;;
+;; a circle intersection detection algorithm that will use
+;; the position of the centre of the surface as the centre of
+;; the circle and approximate the radius using the width and height
+;; of the surface (for example a rect of 4x6 would have r = 2.5).
+(define-cproc cld-bounding-circle-surface (a::<sdl-surface> x1::<fixnum> y1::<fixnum>
+                                           b::<sdl-surface> x2::<fixnum> y2::<fixnum>
+                                           offset::<fixnum>) :: <boolean>
+  (ENSURE_NOT_NULL a)
+  (ENSURE_NOT_NULL b)
+  (result (SDL_CollideBoundingCircleSurface a x1 y1 b x2 y2 offset)))
+
+
+;(define-cproc (a::<sdl-surface> x1::<fixnum> y1::<fixnum>
+    
+

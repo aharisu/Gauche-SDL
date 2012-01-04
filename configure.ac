@@ -78,6 +78,7 @@ dnl Check for other programs.
 dnl Add your macro calls to check existence of programs, if you have any.
 
 AC_SUBST(STUBDIR, "`pwd`/src")
+AC_SUBST(EXTLIBDIR, "`pwd`/ext_lib")
 
 SCRIPTDIR="`pwd`/script"
 AC_SUBST(SCRIPTDIR)
@@ -107,5 +108,5 @@ AC_MSG_NOTICE([creating ${PACKAGE_NAME}.gpd])
 
 dnl Output
 echo $PACKAGE_VERSION > VERSION
-AC_OUTPUT(Makefile src/Makefile src/image/Makefile src/ttf/Makefile src/mixer/Makefile src/gfx/Makefile src/net/Makefile lib/Makefile lib/sdl/Makefile)
+AC_OUTPUT(Makefile src/Makefile src/image/Makefile src/ttf/Makefile src/mixer/Makefile src/gfx/Makefile src/net/Makefile lib/Makefile lib/sdl/Makefile  src/collide/Makefile)
 
