@@ -2610,23 +2610,89 @@ static ScmVM* Scm_TimerVM;
     (set! (@ color.unused) unused)
     (result color)))
 
-
 (define-cclass <sdl-palette>
   :built-in :struct
   "ScmSDL_Palette*" "Scm_SDL_PaletteClass"
-  ()
+  ("Scm_SequenceClass" "Scm_CollectionClass")
   (
    (ncolors :type <int>
             :setter #f)
    )
+  (meta #t)
   )
+
+(define-cproc make-palette (ncolors::<fixnum>) :: <sdl-palette>
+  (let* ([palette :: SDL_Palette])
+    (set! (@ palette.ncolors) ncolors)
+    (set! (@ palette.colors) (SCM_NEW_ARRAY SDL_Color ncolors))
+    (result palette)))
+
+(define-cproc palette-set! (palette::<sdl-palette> index::<int> color::<sdl-color>) :: <void>
+  (when (or (< index 0) (>= index (@ palette.ncolors)))
+    (Scm_Error "index out of range: %d" index))
+  (set! (aref (@ palette.colors) index) color))
+
+(define-cproc palette-ref (palette::<sdl-palette> index::<int> :optional fallback) :: <top>
+  :fast-flonum
+  (setter palette-set!)
+  (if (or (< index 0) (>= index (@ palette.ncolors)))
+    (if (SCM_UNBOUNDP fallback)
+      (Scm_Error "index out of range: %d" index)
+       (result fallback))
+    (result (boxing (aref (@ palette.colors) index) <sdl-color>))))
+
+(define-cproc list->palette (l::<list> :optional (start::<fixnum> 0) (end::<fixnum> -1)) :: <sdl-palette>
+  (let* ([palette :: SDL_Palette])
+    (if (< end 0)
+      (let* ([size :: int (Scm_Length l)])
+        (when (< size 0)
+          (Scm_Error "bad list: %S" l))
+        (SCM_CHECK_START_END start end size)
+        (set! (@ palette.ncolors) (- size start)))
+      (begin
+        (SCM_CHECK_START_END start end end)
+        (set! (@ palette.ncolors) (- end start))))
+    (set! (@ palette.colors) (SCM_NEW_ARRAY SDL_Color (@ palette.ncolors)))
+    (let* ([e :: ScmObj (Scm_ListTail l start SCM_UNBOUND)])
+      (dotimes [i (- end start)]
+        (when (not (SCM_PAIRP e))
+          (Scm_Error "list too short: %S" l))
+        (assign-obj (aref (@ palette.colors) i) (SCM_CAR e) <sdl-color>)
+        (set! e (SCM_CDR e))))
+    (result palette)))
+
+(define-cproc vector->palette (v::<vector> :optional (start::<fixnum> 0) (end::<fixnum> -1)) :: <sdl-palette>
+  (let* ([palette :: SDL_Palette])
+    (if (< end 0)
+      (let* ([size :: int (SCM_VECTOR_SIZE v)])
+        (when (< size 0)
+          (Scm_Error "bad vector: %S" v))
+        (SCM_CHECK_START_END start end size)
+        (set! (@ palette.ncolors) (- size start)))
+      (begin
+        (SCM_CHECK_START_END start end end)
+        (set! (@ palette.ncolors) (- end start))))
+    (set! (@ palette.colors) (SCM_NEW_ARRAY SDL_Color (@ palette.ncolors)))
+    (dotimes [i (- end start)]
+      (assign-obj (aref (@ palette.colors) i)
+                  (SCM_VECTOR_ELEMENT v (+ i start))
+                  <sdl-color>))))
+
 
 (define-cclass <sdl-pixel-format>
   :built-in
   "ScmSDL_PixelFormat*" "Scm_SDL_PixelFormatClass"
   ()
   (
-   #;(;palette
+  (palette :type <top>
+           :setter #f
+           :getter "
+           if(obj->palette == NULL) {
+             return SCM_FALSE;
+           } else {
+             return SCM_MAKE_SDL_PALETTE(*obj->palette);
+           }
+           "
    )
   (bits/pixel :type <uint8>
               :setter #f
@@ -2686,7 +2752,8 @@ static ScmVM* Scm_TimerVM;
   (
    (flags :type <uint32>
           :setter #f)
-   ;(format)
+   (format :type <sdl-pixel-format>
+           :setter #f)
    (w :type <int>
       :setter #f)
    (h :type <int>
@@ -2723,6 +2790,12 @@ static ScmVM* Scm_TimerVM;
 (define-enum SDL_RLEACCEL)
 (define-enum SDL_SRCALPHA)
 (define-enum SDL_PREALLOC)
+
+;;;;;
+;; Evaluates to true if the surface needs to be locked before access
+(define-cproc sdl-must-lock (surface::<sdl-surface>) :: <boolean>
+  (ENSURE_NOT_NULL surface)
+  (result (SDL_MUSTLOCK surface)))
 
 (define-cclass <sdl-video-info>
   :built-in

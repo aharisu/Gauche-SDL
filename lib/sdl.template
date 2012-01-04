@@ -8,6 +8,7 @@
 
 (define-module sdl
   (use gauche.sequence)
+  (use util.queue)
   (export-all)
   )
 (select-module sdl)
@@ -40,4 +41,29 @@
 (define-method referencer ((v <nnvector>)) nnvector-ref)
 (define-method modifier ((v <nnvector>)) nnvector-set!)
 (define-method size-of ((v <nnvector>)) (slot-ref v 'length))
+
+;;for <sdl-palette>
+
+(define-method call-with-iterator ((v <sdl-palette>) proc . opts)
+  (let-keywords opts ([start #f])
+    (let ([len (slot-ref v 'ncolors)]
+          [i (or start 0)])
+      (proc (lambda () (>= i len))
+            (lambda () (begin0 (palette-ref v i)
+                         (inc! i)))))))
+
+(define-method call-with-builder ((v <sdl-palette-meta>) proc . opts)
+  (let-keywords opts ((size #f))
+    (if size
+      (let ([v (make-palette size)]
+            [i 0])
+        (proc (lambda (item) (palette-set! v i item) (inc! i))
+              (lambda () v)))
+      (let ([q (make-queue)])
+        (proc (lambda (item) (enqueue! q item))
+              (lambda () (list->palette (dequeue-all! q))))))))
+
+(define-method referencer ((v <sdl-palette>)) palette-ref)
+(define-method modifier ((v <sdl-palette>)) palette-set!)
+(define-method size-of ((v <sdl-palette>)) (slot-ref v 'ncolors))
 
