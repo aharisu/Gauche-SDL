@@ -114,6 +114,16 @@ int SDL_CollideBoundingCircleSurface(SDL_Surface *a , int x1 , int y1 ,
                                 SDL_Surface *b , int x2 , int y2 ,
                                 int offset);
 
+typedef struct _SDL_CollideMaskRec* SDL_CollideMask;
+
+SDL_CollideMask SDL_CollideCreateMask(SDL_Surface* s);
+void SDL_CollideFreeMask(SDL_CollideMask mask);
+
+int SDL_CollidePixelMask(SDL_CollideMask am, int ax, int ay,
+                SDL_CollideMask bm, int bx, int by, int skip);
+
+int SDL_CollidePixelSurfaceAndMask(SDL_Surface* as, int ax, int ay,
+                                    SDL_CollideMask bm, int bx, int by, int skip);
 
 /* Ends C function definitions when using C++ */
 #ifdef __cplusplus

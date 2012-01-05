@@ -47,10 +47,12 @@ GAUCHE_PKGARCHDIR = "$(DESTDIR)@GAUCHE_PKGARCHDIR@"
 
 gauche_sdl_collide_SRCS = gauche-sdl-collide.c \
 												sdl-collidelib.c \
+												collide_type.gen.c \
 												$(COLLIDEDIR)/SDL_collide.c
 
 sdl_STUB_TYPE_HDRS = ../sdl_type.gen.stub.header \
-										 ../macro.stub.header
+										 ../macro.stub.header \
+										 collide_type.gen.c
 
 all : $(TARGET)
 
@@ -61,6 +63,11 @@ all : $(TARGET)
 	$(GOSH) -I$(SCRIPTDIR) $(GENSTUB) $<
 
 sdl-collidelib.c: $(sdl_STUB_TYPE_HDRS)
+
+#generate type file
+collide_type.gen.c collide_type.gen.h collide_type.gen.stub.header: collide_type.scm
+	$(GOSH) -I$(SCRIPTDIR) collide_type.scm
+
 
 #compile sdl
 gauche-sdl-collide.$(SOEXT): $(gauche_sdl_collide_SRCS) ../gauche-sdl.$(SOEXT)

@@ -2,10 +2,12 @@
 "
 #include \"gauche-sdl-collide.h\"
 #include \"../sdl_type.gen.h\"
+#include \"collide_type.gen.h\"
 "
 
 (include "../sdl_type.gen.stub.header")
 (include "../macro.stub.header")
+(include "collide_type.gen.stub.header")
 
 ;;;;;
 ;; SDL surface test if offset (u,v) is a transparent pixel
@@ -28,9 +30,9 @@
 ;;             the expense of accuracy.
 ;;
 ;; @return #t on collision, #f otherwise
-(define-cproc cld-pixel (as::<sdl-surface> ax::<fixnum> ay::<fixnum>
-                         bs::<sdl-surface> bx::<fixnum> by::<fixnum>
-                         :optional (skip::<fixnum> 4)) :: <boolean>
+(define-cproc cld-pixel-surface (as::<sdl-surface> ax::<fixnum> ay::<fixnum>
+                                 bs::<sdl-surface> bx::<fixnum> by::<fixnum>
+                                 :optional (skip::<fixnum> 4)) :: <boolean>
   (ENSURE_NOT_NULL as)
   (ENSURE_NOT_NULL bs)
   (result (SDL_CollidePixel as ax ay bs bx by skip)))
@@ -85,6 +87,51 @@
   (result (SDL_CollideBoundingCircleSurface a x1 y1 b x2 y2 offset)))
 
 
-;(define-cproc (a::<sdl-surface> x1::<fixnum> y1::<fixnum>
-    
+(define-cproc cld-make-mask (s::<sdl-surface>) :: <cld-mask>
+  (ENSURE_NOT_NULL s)
+  (result (SDL_CollideCreateMask s)))
+
+(define-cproc cld-free-mask (mask::<cld-mask>) :: <void>
+  (when mask
+    (SDL_CollideFreeMask mask)
+    (set! (-> (SCM_FOREIGN_POINTER mask-scm) ptr) 0)))
+
+(define-cproc cld-pixel-mask (am::<cld-mask> ax::<fixnum> ay::<fixnum>
+                              bm::<cld-mask> bx::<fixnum> by::<fixnum>
+                              :optional (skip::<fixnum> 4)) :: <boolean>
+  (ENSURE_NOT_NULL am)
+  (ENSURE_NOT_NULL bm)
+  (result (SDL_CollidePixelMask am ax ay bm bx by skip)))
+
+(define-cproc cld-pixel (a::<top> ax::<fixnum> ay::<fixnum>
+                         b::<top> bx::<fixnum> by::<fixnum>
+                         :optional (skip::<fixnum> 4)) :: <boolean>
+  (cond
+    [(is-type? a <sdl-surface>)
+     (let* ([as :: SDL_Surface* (unboxing a <sdl-surface>)])
+       (ENSURE_NOT_NULL as)
+       (cond
+         [(is-type? b <sdl-surface>)
+           (let* ([bs :: SDL_Surface* (unboxing b <sdl-surface>)])
+             (ENSURE_NOT_NULL bs)
+             (result (SDL_CollidePixel as ax ay bs bx by skip)))]
+         [(is-type? b <cld-mask>) 
+          (let* ([bm :: SDL_CollideMask (unboxing b <cld-mask>)])
+            (ENSURE_NOT_NULL bm)
+            (result (SDL_CollidePixelSurfaceAndMask as ax ay bm bx by skip)))]
+         [else (Scm_Error "<sdl-surface> or <cld-mask> required, but got %S." b)]))]
+    [(is-type? a <cld-mask>)
+     (let* ([am :: SDL_CollideMask (unboxing a <cld-mask>)])
+       (ENSURE_NOT_NULL am)
+       (cond
+         [(is-type? b <sdl-surface>)
+           (let* ([bs :: SDL_Surface* (unboxing b <sdl-surface>)])
+             (ENSURE_NOT_NULL bs)
+             (result (SDL_CollidePixelSurfaceAndMask bs bx by am ax ay skip)))]
+         [(is-type? b <cld-mask>) 
+          (let* ([bm :: SDL_CollideMask (unboxing b <cld-mask>)])
+            (ENSURE_NOT_NULL bm)
+            (result (SDL_CollidePixelMask am ax ay bm bx by skip)))]
+         [else (Scm_Error "<sdl-surface> or <cld-mask> required, but got %S." b)]))]
+    [else (Scm_Error "<sdl-surface> or <cld-mask> required, but got %S." b)]))
 

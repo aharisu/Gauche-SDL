@@ -13,6 +13,7 @@
 (define background-image #f)
 (define player #f)
 (define obstacle #f)
+(define obstacle-mask #f)
 
 (define (load-image filename)
   (let1 img (img-load filename)
@@ -63,7 +64,7 @@
                      (if (input-down cur-input) speed 0))])
     (when (and (or (not (zero? delta-x)) (not (zero? delta-y)))
             (not (cld-pixel player (+ pos-x delta-x) (+ pos-y delta-y)
-                            obstacle 300 180 6)))
+                            obstacle-mask 300 180 1)))
       (set! pos-x (+ pos-x delta-x))
       (set! pos-y (+ pos-y delta-y))
       (cond
@@ -86,6 +87,7 @@
   (set! background-image (img-load "res/background.png"))
   (set! player (load-image "res/player.bmp"))
   (set! obstacle (load-image "res/obstacle.bmp"))
+  (set! obstacle-mask (cld-make-mask obstacle))
   )
 
 (define-constant wait (/ 1000 60))

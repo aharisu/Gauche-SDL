@@ -33,10 +33,6 @@
 
 #include "SDL_collide.h"
 
-/*if this header is not supported on your system comment out
-the assert function call in SDL_TransparentPixel*/
-#include "assert.h"
-
 /*returns maximum or minimum of number*/
 #define SDL_COLLIDE_MAX(a,b)	((a > b) ? a : b)
 #define SDL_COLLIDE_MIN(a,b)	((a < b) ? a : b)
@@ -294,3 +290,159 @@ int SDL_CollideBoundingCircleSurface(SDL_Surface *a , int x1 , int y1 ,
 
 	return SDL_CollideBoundingCircle(x1,y1,r1,x2,y2,r2,offset);
 }
+
+
+typedef struct _SDL_CollideMaskRec {
+  int w;
+  int h;
+  Uint8* mask;
+}_SDL_CollideMask;
+
+SDL_CollideMask SDL_CollideCreateMask(SDL_Surface* s)
+{
+  int x,y;
+  SDL_CollideMask mask = (SDL_CollideMask)SDL_malloc(sizeof(_SDL_CollideMask));
+  mask->w = s->w;
+  mask->h = s->h;
+  mask->mask = (Uint8*)SDL_malloc(mask->h * mask->w);
+
+  for(y = 0;y < s->h;++y) {
+    for(x = 0;x < s->w;++x) {
+      Uint8* pixel = (Uint8*)s->pixels + y * s->pitch + x * s->format->BytesPerPixel;
+      Uint32 color;
+
+      switch(s->format->BytesPerPixel) {
+        case 1:
+          color = *pixel;
+          break;
+        case 2:
+          color = *(Uint16*)pixel;
+          break;
+        case 3:
+          if(SDL_BYTEORDER == SDL_BIG_ENDIAN)
+            color = pixel[0] << 16 | pixel[1] << 8 | pixel[2];
+          else
+            color = pixel[0] | pixel[1] << 8 | pixel[2] << 16;
+          break;
+        case 4:
+          color = *(Uint32*)pixel;
+          break;
+      }
+
+      mask->mask[y * s->w + x] = color != s->format->colorkey;
+    }
+  }
+
+  return mask;
+}
+
+void SDL_CollideFreeMask(SDL_CollideMask mask)
+{
+  if(mask != NULL) {
+    if(mask->mask != NULL) {
+      SDL_free(mask->mask);
+      mask->mask = NULL;
+    }
+    SDL_free(mask);
+  }
+}
+
+int SDL_CollidePixelMask(SDL_CollideMask am, int ax, int ay,
+                SDL_CollideMask bm, int bx, int by, int skip)
+{
+  /*a - bottom right co-ordinates in world space*/
+  int ax1 = ax + am->w - 1;
+  int ay1 = ay + am->h - 1;
+
+  /*b - bottom right co-ordinates in world space*/
+  int bx1 = bx + bm->w - 1;
+  int by1 = by + bm->h - 1;
+
+  /*check if bounding boxes intersect*/
+  if((bx1 < ax) || (ax1 < bx))
+          return 0;
+  if((by1 < ay) || (ay1 < by))
+          return 0;
+
+  int xstart = SDL_COLLIDE_MAX(ax,bx);
+  int xend = SDL_COLLIDE_MIN(ax1,bx1);
+
+  int ystart = SDL_COLLIDE_MAX(ay,by);
+  int yend = SDL_COLLIDE_MIN(ay1,by1);
+
+  for(int y = ystart ; y <= yend ; y += skip) {
+    for(int x = xstart ; x <= xend ; x += skip) {
+      if(am->mask[(y - ay) * am->w + (x - ax)] && bm->mask[(y - by) * bm->w + (x - bx)])
+        return 1;
+    }
+  }
+
+  return 0;
+}
+
+int SDL_CollidePixelSurfaceAndMask(SDL_Surface* as, int ax, int ay,
+                                    SDL_CollideMask bm, int bx, int by, int skip)
+{
+  /*a - bottom right co-ordinates in world space*/
+  int ax1 = ax + as->w - 1;
+  int ay1 = ay + as->h - 1;
+
+  /*b - bottom right co-ordinates in world space*/
+  int bx1 = bx + bm->w - 1;
+  int by1 = by + bm->h - 1;
+
+  /*check if bounding boxes intersect*/
+  if((bx1 < ax) || (ax1 < bx))
+          return 0;
+  if((by1 < ay) || (ay1 < by))
+          return 0;
+
+  int xstart = SDL_COLLIDE_MAX(ax,bx);
+  int xend = SDL_COLLIDE_MIN(ax1,bx1);
+
+  int ystart = SDL_COLLIDE_MAX(ay,by);
+  int yend = SDL_COLLIDE_MIN(ay1,by1);
+
+  if(SDL_MUSTLOCK(as))
+   SDL_LockSurface(as);
+
+  int a_bpp = as->format->BytesPerPixel;
+  int ret = 0;
+  for(int y = ystart ; y <= yend ; y += skip) {
+    for(int x = xstart ; x <= xend ; x += skip) {
+      Uint8* a_p = (Uint8*)as->pixels + (y-ay) * as->pitch + (x-ax) * a_bpp;
+      Uint32 a_pixelcolor;
+      switch(a_bpp)
+      {
+        case 1:
+          a_pixelcolor = *a_p;
+          break;
+        case 2:
+          a_pixelcolor = *(Uint16*)a_p;
+          break;
+        case 3:
+          if(SDL_BYTEORDER == SDL_BIG_ENDIAN)
+            a_pixelcolor = a_p[0] << 16 | a_p[1] << 8 | a_p[2];
+          else
+            a_pixelcolor = a_p[0] | a_p[1] << 8 | a_p[2] << 16;
+          break;
+        case 4:
+          a_pixelcolor = *(Uint32*)a_p;
+          break;
+      }
+
+      if(a_pixelcolor != as->format->colorkey && 
+          bm->mask[(y - by) * bm->w + (x - bx)]) {
+        ret = 1;
+        goto FINISH;
+      }
+    }
+  }
+FINISH:
+
+  if(SDL_MUSTLOCK(as))
+   SDL_UnlockSurface(as);
+
+  return ret;
+}
+
