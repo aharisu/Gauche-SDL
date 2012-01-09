@@ -2494,8 +2494,55 @@ ScmVM* Scm_AudioVM;
     (ENSURE_NOT_NULL ctx-data)
     (result (SDL_RWclose ctx-data))))
 
-;;not support SDL_thread
 
+;;------------------
+;; SDL_thread.h
+;;------------------
+
+"
+typedef struct ThreadDataRec {
+ScmClosure* fn;
+ScmObj data;
+ScmVM* vm;
+}ThreadData;
+"
+
+(define-cfn thread-callback (data::void*) :: int
+  (let* ([p :: ThreadData* (cast ThreadData* data)])
+    (Scm_AttachVM (@ p->vm))
+    (let* ([ret :: int (unboxing
+                         (?: (== 0 (SCM_PROCEDURE_REQUIRED (@ p->fn)))
+                             (Scm_ApplyRec0 (SCM_OBJ (@ p->fn)))
+                             (Scm_ApplyRec1 (SCM_OBJ (@ p->fn))
+                                            (@ p->data)))
+                         <int>)])
+      (return ret))))
+
+(define-cproc sdl-create-thread (fn::<closure> :optional data::<top>) :: <sdl-thread>
+  (let* ([d :: ThreadData* (SCM_NEW ThreadData)])
+    (set! (@ d->fn) fn)
+    (set! (@ d->data) data)
+    (set! (@ d->vm) (Scm_NewVM (Scm_VM) (boxing "sdl-thread" <const-cstring>)))
+    (result (SDL_CreateThread thread-callback d))))
+
+(define-cproc sdl-thread-id () :: <uint32>
+  (result (SDL_ThreadID)))
+
+(define-cproc sdl-get-thread-id (thread::<sdl-thread>) :: <uint32>
+  (ENSURE_NOT_NULL thread)
+  (result (SDL_GetThreadID thread)))
+
+(define-cproc sdl-wait-thread (thread::<sdl-thread>) :: <int>
+  (let* ([status :: int 0])
+  (when thread
+    (SDL_WaitThread thread (& status))
+    (set! (-> (SCM_FOREIGN_POINTER thread-scm) ptr) 0))
+  (result status)))
+
+(define-cproc sdl-kill-thread (thread::<sdl-thread>) :: <void>
+  (when thread
+    (SDL_KillThread thread)
+    (set! (-> (SCM_FOREIGN_POINTER thread-scm) ptr) 0)))
 
 ;;------------------
 ;; SDL_timer.h

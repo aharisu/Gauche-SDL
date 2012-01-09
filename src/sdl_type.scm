@@ -86,6 +86,7 @@
     (SDL_sem <sdl-semaphore> #t "SDL_DestroySemaphore" "")
     (SDL_cond <sdl-cond> #t "SDL_DestroyCond" "")
     (SDL_RWops <sdl-rw-ops> #t  "SDL_RWclose SDL_FreeRW" "")
+    (SDL_Thread <sdl-thread> #t #f "")
     (SDL_TimerID <sdl-timer> #f "" "")
     (SDL_Cursor <sdl-cursor> #t "SDL_FreeCursor" "")
     ))
