@@ -1,0 +1,16 @@
+;;;
+;;; collide.scm - Gauche SDL_collide binding
+;;;
+
+;;;;;
+;;@type cmd
+;;@@parse-relative #f
+
+(define-module sdl.collide
+  (use sdl)
+  (export-all)
+  )
+(select-module sdl.collide)
+
+(dynamic-load "gauche-sdl-collide")
+

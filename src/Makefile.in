@@ -61,6 +61,7 @@ all : $(TARGET)
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) all); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) all); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) all); fi
+	@cd collide; $(MAKE) all
 
 #generate stub -> c file
 .SUFFIXES:.stub .c
@@ -86,6 +87,7 @@ test : all
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) test); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) test); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) test); fi
+	@cd collide; $(MAKE) test
 
 install :
 	$(INSTALL) -m 444 -T $(GAUCHE_PKGINCDIR) $(HEADERS)
@@ -95,6 +97,7 @@ install :
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) install); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) install); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) install); fi
+	@cd collide; $(MAKE) install
 
 uninstall :
 	$(INSTALL) -U $(GAUCHE_PKGINCDIR) $(HEADERS)
@@ -104,6 +107,7 @@ uninstall :
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) uninstall); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) uninstall); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) uninstall); fi
+	@cd collide; $(MAKE) uninstall
 
 clean :
 	$(GAUCHE_PACKAGE) compile --clean gauche_sdl $(gauche_sdl_SRCS)
@@ -113,6 +117,7 @@ clean :
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) clean); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) clean); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) clean); fi
+	@cd collide; $(MAKE) clean
 
 realclean : clean
 	rm -rf $(CONFIG_GENERATED)
@@ -121,6 +126,7 @@ realclean : clean
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) realclean); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) realclean); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) realclean); fi
+	@cd collide; $(MAKE) realclean
 
 maintainer-clean : clean
 	rm -rf $(CONFIG_GENERATED) configure VERSION
@@ -129,4 +135,5 @@ maintainer-clean : clean
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) maintainer-clean); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) maintainer-clean); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) maintainer-clean); fi
+	@cd collide; $(MAKE) maintainer-clean
 

@@ -1,0 +1,97 @@
+# General info
+SHELL       = @SHELL@
+prefix      = @prefix@
+exec_prefix = @exec_prefix@
+bindir      = @bindir@
+libdir      = @libdir@
+datadir     = @datadir@
+datarootdir = @datarootdir@
+srcdir      = @srcdir@
+VPATH       = $(srcdir)
+
+# These may be overridden by make invocators
+DESTDIR        =
+GOSH           = "@GOSH@"
+GAUCHE_CONFIG  = "@GAUCHE_CONFIG@"
+GAUCHE_PACKAGE = "@GAUCHE_PACKAGE@"
+INSTALL        = "@GAUCHE_INSTALL@" -C
+
+COLLIDEDIR = @EXTLIBDIR@/collide
+SCRIPTDIR = "@SCRIPTDIR@"
+GENSTUB = "@GENSTUB@"
+
+# Other parameters
+SOEXT  = @SOEXT@
+OBJEXT = @OBJEXT@
+EXEEXT = @EXEEXT@
+SDL_LDFLAGS = @SDL_LDFLAGS@
+LOCAL_PATHS = "@LOCAL_PATHS@"
+
+SDL_LIBS = -lSDL 
+
+gauche_SDL_LIBS = @SDL_LIBS@
+
+# Module-specific stuff
+PACKAGE = @PACKAGE@
+
+ARCHFILES = gauche-sdl-collide.$(SOEXT)
+HEADERS   = 
+
+TARGET    = $(ARCHFILES)
+GENERATED = *.gen.* *lib.c gauche-sdl-collide.$(SOEXT)
+CONFIG_GENERATED = Makefile
+
+GAUCHE_PKGINCDIR  = "$(DESTDIR)@GAUCHE_PKGINCDIR@"
+GAUCHE_PKGLIBDIR  = "$(DESTDIR)@GAUCHE_PKGLIBDIR@"
+GAUCHE_PKGARCHDIR = "$(DESTDIR)@GAUCHE_PKGARCHDIR@"
+
+gauche_sdl_collide_SRCS = gauche-sdl-collide.c \
+												sdl-collidelib.c \
+												collide_type.gen.c \
+												$(COLLIDEDIR)/SDL_collide.c
+
+sdl_STUB_TYPE_HDRS = ../sdl_type.gen.stub.header \
+										 ../macro.stub.header \
+										 collide_type.gen.c
+
+all : $(TARGET)
+
+#generate stub -> c file
+.SUFFIXES:.stub .c
+
+.stub.c:
+	$(GOSH) -I$(SCRIPTDIR) $(GENSTUB) $<
+
+sdl-collidelib.c: $(sdl_STUB_TYPE_HDRS)
+
+#generate type file
+collide_type.gen.c collide_type.gen.h collide_type.gen.stub.header: collide_type.scm
+	$(GOSH) -I$(SCRIPTDIR) collide_type.scm
+
+
+#compile sdl
+gauche-sdl-collide.$(SOEXT): $(gauche_sdl_collide_SRCS) ../gauche-sdl.$(SOEXT)
+	$(GAUCHE_PACKAGE) compile --cflags="-I$(COLLIDEDIR)" --local="$(LOCAL_PATHS)" --verbose --ldflags="$(LDFLAGS) $(SDL_LDFLAGS)" --libs="$(SDL_LIBS) $(gauche_SDL_LIBS)" gauche-sdl-collide $(gauche_sdl_collide_SRCS)
+
+test : all
+	@rm -f test.log
+	$(GOSH) -I. -I$(srcdir) $(srcdir)/test.scm > test.log
+
+install :
+	$(INSTALL) -m 444 -T $(GAUCHE_PKGINCDIR) $(HEADERS)
+	$(INSTALL) -m 555 -T $(GAUCHE_PKGARCHDIR) $(ARCHFILES)
+
+uninstall :
+	$(INSTALL) -U $(GAUCHE_PKGINCDIR) $(HEADERS)
+	$(INSTALL) -U $(GAUCHE_PKGARCHDIR) $(ARCHFILES)
+
+clean :
+	$(GAUCHE_PACKAGE) compile --clean gauche_sdl-collide $(gauche_sdl_collide_SRCS)
+	rm -rf core $(TARGET) $(GENERATED) *~ test.log so_locations
+
+realclean : clean
+	rm -rf $(CONFIG_GENERATED)
+
+maintainer-clean : clean
+	rm -rf $(CONFIG_GENERATED) configure VERSION
+
