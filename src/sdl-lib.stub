@@ -1549,11 +1549,16 @@ ScmVM* Scm_AudioVM;
 (define-cproc sdl-show-cursor (toggle::<fixnum>) ::<boolean>
   (result (SDL_ShowCursor toggle)))
 
+(define-enum SDL_BUTTON_LEFT)
+(define-enum SDL_BUTTON_MIDDLE)
+(define-enum SDL_BUTTON_RIGHT)
+(define-enum SDL_BUTTON_WHEELUP)
+(define-enum SDL_BUTTON_WHEELDOWN)
+(define-enum SDL_BUTTON_X1)
+(define-enum SDL_BUTTON_X2)
 (define-enum SDL_BUTTON_LMASK)
 (define-enum SDL_BUTTON_MMASK)
 (define-enum SDL_BUTTON_RMASK)
-(define-constant SDL_BUTTON_WUMASK (SDL_BUTTON SDL_BUTTON_WHEELUP))
-(define-constant SDL_BUTTON_WDMASK (SDL_BUTTON SDL_BUTTON_WHEELDOWN))
 (define-enum SDL_BUTTON_X1MASK)
 (define-enum SDL_BUTTON_X2MASK)
 
@@ -1571,7 +1576,7 @@ ScmVM* Scm_AudioVM;
 ;; Get the implementation dependent name of a joystick.
 ;; This can be called before any joysticks are opened.
 ;; If no name can be found, this function returns NULL.
-(define-cproc sdl-num-joystick-name (device-index::<int>) ::<const-cstring>
+(define-cproc sdl-joystick-name (device-index::<int>) ::<const-cstring>
   (result (SDL_JoystickName device-index)))
 
 
