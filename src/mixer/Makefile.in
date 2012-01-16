@@ -23,12 +23,13 @@ GENSTUB = "@GENSTUB@"
 SOEXT  = @SOEXT@
 OBJEXT = @OBJEXT@
 EXEEXT = @EXEEXT@
-SDL_LDFLAGS = @SDL_LDFLAGS@
+GSDL_LDFLAGS = @GSDL_LDFLAGS@
 LOCAL_PATHS = "@LOCAL_PATHS@"
 
-SDL_LIBS = -lSDL -lSDL_mixer
+SDL_LIBS = @SDL_LIBS@ -lSDL_mixer
+SDL_CFLAGS = @SDL_CFLAGS@
 
-gauche_SDL_LIBS = @SDL_LIBS@
+gauche_SDL_LIBS = @GSDL_LIBS@
 
 # Module-specific stuff
 PACKAGE = @PACKAGE@
@@ -68,7 +69,7 @@ mixer_type.gen.c mixer_type.gen.h mixer_type.gen.stub.header: mixer_type.scm
 
 #compile mixer
 gauche-sdl-mixer.$(SOEXT): $(gauche_sdl_mixer_SRCS) ../gauche-sdl.$(SOEXT)
-	$(GAUCHE_PACKAGE) compile --local=$(LOCAL_PATHS) --verbose --ldflags="$(LDFLAGS) $(SDL_LDFLAGS)" --libs="$(SDL_LIBS) $(gauche_SDL_LIBS)" gauche-sdl-mixer $(gauche_sdl_mixer_SRCS)
+	$(GAUCHE_PACKAGE) compile --cflags="$(SDL_CFLAGS)" --local=$(LOCAL_PATHS) --verbose --ldflags="$(GSDL_LDFLAGS)" --libs="$(SDL_LIBS) $(gauche_SDL_LIBS)" gauche-sdl-mixer $(gauche_sdl_mixer_SRCS)
 
 test : all
 	@rm -f test.log

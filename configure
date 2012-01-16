@@ -595,13 +595,15 @@ ac_includes_default="\
 
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
-SDL_LIBS
-SDL_LDFLAGS
 GENDOC
 GENSTUB
 SCRIPTDIR
+GSDL_LIBS
+GSDL_LDFLAGS
 EXTLIBDIR
 STUBDIR
+SDL_CFLAGS
+SDL_LIBS
 HAVE_SDL_NET
 HAVE_SDL_TTF
 HAVE_SDL_MIXER
@@ -622,6 +624,7 @@ GAUCHE_PKGINCDIR
 EXEEXT
 OBJEXT
 SOEXT
+SDL_CONFIG
 GAUCHE_CESCONV
 GAUCHE_INSTALL
 GAUCHE_PACKAGE
@@ -2347,6 +2350,46 @@ $as_echo "no" >&6; }
 fi
 
 
+# Extract the first word of "sdl-config", so it can be a program name with args.
+set dummy sdl-config; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if test "${ac_cv_path_SDL_CONFIG+set}" = set; then :
+  $as_echo_n "(cached) " >&6
+else
+  case $SDL_CONFIG in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_SDL_CONFIG="$SDL_CONFIG" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if { test -f "$as_dir/$ac_word$ac_exec_ext" && $as_test_x "$as_dir/$ac_word$ac_exec_ext"; }; then
+    ac_cv_path_SDL_CONFIG="$as_dir/$ac_word$ac_exec_ext"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+SDL_CONFIG=$ac_cv_path_SDL_CONFIG
+if test -n "$SDL_CONFIG"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $SDL_CONFIG" >&5
+$as_echo "$SDL_CONFIG" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
 
 SOEXT=`"$GAUCHE_CONFIG" --so-suffix`
 OBJEXT=`"$GAUCHE_CONFIG" --object-suffix`
@@ -3635,26 +3678,34 @@ done
 
 
 
-STUBDIR="`pwd`/src"
+SDL_LIBS=`"$SDL_CONFIG" --libs`
+SDL_CFLAGS=`"$SDL_CONFIG" --cflags`
 
-EXTLIBDIR="`pwd`/ext_lib"
 
 
-SCRIPTDIR="`pwd`/script"
+GSDL_LIBS=""
+PWD="pwd"
+case "$target" in
+  *mingw*)
+    GSDL_LIBS="-lgauche-sdl"
+    PWD="pwd -W"
+  ;;
+esac
+STUBDIR="`$PWD`/src"
+
+EXTLIBDIR="`$PWD`/ext_lib"
+
+
+GSDL_LDFLAGS="-L$STUBDIR"
+
+
+
+
+SCRIPTDIR="`$PWD`/script"
 
 GENSTUB="$SCRIPTDIR/genstub.scm"
 
 GENDOC="$SCRIPTDIR/gendoc.scm"
-
-
-SDL_LDFLAGS=""
-SDL_LIBS=""
-case "$target" in
-  *mingw*)
-    SDL_LDFLAGS="-L$STUBDIR"
-    SDL_LIBS="-lgauche-sdl"
-  ;;
-esac
 
 
 

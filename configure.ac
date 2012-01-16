@@ -34,6 +34,7 @@ AC_PATH_PROG([GAUCHE_CONFIG], gauche-config)
 AC_PATH_PROG([GAUCHE_PACKAGE], gauche-package)
 AC_PATH_PROG([GAUCHE_INSTALL], gauche-install)
 AC_PATH_PROG([GAUCHE_CESCONV], gauche-cesconv)
+AC_PATH_PROG([SDL_CONFIG], sdl-config)
 
 dnl Usually these parameters are set by AC_PROG_CC, but we'd rather use
 dnl the same one as Gauche has been compiled with.
@@ -77,24 +78,32 @@ AC_SUBST(HAVE_SDL_NET)
 dnl Check for other programs.
 dnl Add your macro calls to check existence of programs, if you have any.
 
-AC_SUBST(STUBDIR, "`pwd`/src")
-AC_SUBST(EXTLIBDIR, "`pwd`/ext_lib")
+SDL_LIBS=`"$SDL_CONFIG" --libs`
+SDL_CFLAGS=`"$SDL_CONFIG" --cflags`
+AC_SUBST(SDL_LIBS)
+AC_SUBST(SDL_CFLAGS)
 
-SCRIPTDIR="`pwd`/script"
+GSDL_LIBS=""
+PWD="pwd"
+case "$target" in
+  *mingw*)
+    GSDL_LIBS="-lgauche-sdl"
+    PWD="pwd -W"
+  ;;
+esac
+AC_SUBST(STUBDIR, "`$PWD`/src")
+AC_SUBST(EXTLIBDIR, "`$PWD`/ext_lib")
+
+GSDL_LDFLAGS="-L$STUBDIR"
+AC_SUBST(GSDL_LDFLAGS)
+AC_SUBST(GSDL_LIBS)
+
+
+SCRIPTDIR="`$PWD`/script"
 AC_SUBST(SCRIPTDIR)
 AC_SUBST(GENSTUB, "$SCRIPTDIR/genstub.scm")
 AC_SUBST(GENDOC, "$SCRIPTDIR/gendoc.scm")
 
-SDL_LDFLAGS=""
-SDL_LIBS=""
-case "$target" in
-  *mingw*)
-    SDL_LDFLAGS="-L$STUBDIR"
-    SDL_LIBS="-lgauche-sdl"
-  ;;
-esac
-AC_SUBST(SDL_LDFLAGS)
-AC_SUBST(SDL_LIBS)
 
 dnl Check for libraries
 dnl Add your macro calls to check required libraries, if you have any.
