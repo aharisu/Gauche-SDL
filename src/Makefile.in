@@ -21,6 +21,7 @@ HAVE_SDL_IMAGE = @HAVE_SDL_IMAGE@
 HAVE_SDL_MIXER = @HAVE_SDL_MIXER@
 HAVE_SDL_TTF = @HAVE_SDL_TTF@
 HAVE_SDL_NET = @HAVE_SDL_NET@
+HAVE_SDL_SMPEG = @HAVE_SDL_SMPEG@
 
 
 SCRIPTDIR = "@SCRIPTDIR@"
@@ -61,6 +62,7 @@ all : $(TARGET)
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) all); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) all); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) all); fi
+	@if test X$(HAVE_SDL_MIXER) != X -a X$(HAVE_SDL_SMPEG) != X; then (cd smpeg; $(MAKE) all); fi
 	@cd collide; $(MAKE) all
 
 #generate stub -> c file
@@ -87,6 +89,7 @@ test : all
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) test); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) test); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) test); fi
+	@if test X$(HAVE_SDL_MIXER) != X -a X$(HAVE_SDL_SMPEG) != X; then (cd smpeg; $(MAKE) test); fi
 	@cd collide; $(MAKE) test
 
 install :
@@ -97,6 +100,7 @@ install :
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) install); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) install); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) install); fi
+	@if test X$(HAVE_SDL_MIXER) != X -a X$(HAVE_SDL_SMPEG) != X; then (cd smpeg; $(MAKE) install); fi
 	@cd collide; $(MAKE) install
 
 uninstall :
@@ -107,6 +111,7 @@ uninstall :
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) uninstall); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) uninstall); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) uninstall); fi
+	@if test X$(HAVE_SDL_MIXER) != X -a X$(HAVE_SDL_SMPEG) != X; then (cd smpeg; $(MAKE) uninstall); fi
 	@cd collide; $(MAKE) uninstall
 
 clean :
@@ -117,6 +122,7 @@ clean :
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) clean); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) clean); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) clean); fi
+	@if test X$(HAVE_SDL_MIXER) != X -a X$(HAVE_SDL_SMPEG) != X; then (cd smpeg; $(MAKE) clean); fi
 	@cd collide; $(MAKE) clean
 
 realclean : clean
@@ -126,6 +132,7 @@ realclean : clean
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) realclean); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) realclean); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) realclean); fi
+	@if test X$(HAVE_SDL_MIXER) != X -a X$(HAVE_SDL_SMPEG) != X; then (cd smpeg; $(MAKE) realclean); fi
 	@cd collide; $(MAKE) realclean
 
 maintainer-clean : clean
@@ -135,5 +142,6 @@ maintainer-clean : clean
 	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) maintainer-clean); fi
 	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) maintainer-clean); fi
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) maintainer-clean); fi
+	@if test X$(HAVE_SDL_MIXER) != X -a X$(HAVE_SDL_SMPEG) != X; then (cd smpeg; $(MAKE) maintainer-clean); fi
 	@cd collide; $(MAKE) maintainer-clean
 

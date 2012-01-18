@@ -1,0 +1,16 @@
+;;
+;;; smpeg.scm - Gauche smpeg binding
+;;;
+
+;;;;;
+;;@type cmd
+;;@@parse-relative #f
+
+(define-module sdl.smpeg
+  (use sdl)
+  (export-all)
+  )
+(select-module sdl.smpeg)
+
+(dynamic-load "gauche-sdl-smpeg")
+

@@ -29,9 +29,10 @@ HAVE_SDL_IMAGE = @HAVE_SDL_IMAGE@
 HAVE_SDL_MIXER = @HAVE_SDL_MIXER@
 HAVE_SDL_TTF = @HAVE_SDL_TTF@
 HAVE_SDL_NET = @HAVE_SDL_NET@
+HAVE_SDL_SMPEG = @HAVE_SDL_SMPEG@
 
 #SCMFILES = color.scm gfx.scm image.scm mixer.scm ttf.scm
-HAVE_SDL_H = $(HAVE_SDL_GFX) $(HAVE_SDL_IMAGE) $(HAVE_SDL_MIXER) $(HAVE_SDL_TTF) $(HAVE_SDL_NET) collide
+HAVE_SDL_H = $(HAVE_SDL_GFX) $(HAVE_SDL_IMAGE) $(HAVE_SDL_MIXER) $(HAVE_SDL_TTF) $(HAVE_SDL_NET) $(HAVE_SDL_SMPEG) collide
 SCMFILES = $(addsuffix .scm,$(HAVE_SDL_H))
 GENERATED = $(addsuffix .scm,$(HAVE_SDL_H))
 
@@ -53,6 +54,9 @@ gfx.scm: $(STUBDIR)/gfx/sdl-gfxlib.stub gfx.template
 
 net.scm: $(STUBDIR)/net/sdl-netlib.stub net.template
 	$(GOSH) -I$(SCRIPTDIR) $(GENDOC) -s $(STUBDIR)/net/sdl-netlib.stub -t net.template -o net.scm
+
+smpeg.scm: $(STUBDIR)/smpeg/sdl-smpeglib.stub smpeg.template
+	$(GOSH) -I$(SCRIPTDIR) $(GENDOC) -s $(STUBDIR)/smpeg/sdl-smpeglib.stub -t smpeg.template -o smpeg.scm
 
 collide.scm: $(STUBDIR)/collide/sdl-collidelib.stub collide.template
 	$(GOSH) -I$(SCRIPTDIR) $(GENDOC) -s $(STUBDIR)/collide/sdl-collidelib.stub -t collide.template -o collide.scm

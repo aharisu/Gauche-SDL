@@ -604,6 +604,7 @@ EXTLIBDIR
 STUBDIR
 SDL_CFLAGS
 SDL_LIBS
+HAVE_SDL_SMPEG
 HAVE_SDL_NET
 HAVE_SDL_TTF
 HAVE_SDL_MIXER
@@ -2398,6 +2399,8 @@ EXEEXT=`"$GAUCHE_CONFIG" --executable-suffix`
 
 
 
+CPPFLAGS="$CPPFLAGS `$SDL_CONFIG --cflags`"
+
 ac_default_prefix=`"$GAUCHE_CONFIG" --prefix`
 
 GAUCHE_PKGINCDIR=`"$GAUCHE_CONFIG" --pkgincdir`
@@ -3677,6 +3680,20 @@ done
 
 
 
+for ac_header in smpeg/smpeg.h
+do :
+  ac_fn_c_check_header_mongrel "$LINENO" "smpeg/smpeg.h" "ac_cv_header_smpeg_smpeg_h" "$ac_includes_default"
+if test "x$ac_cv_header_smpeg_smpeg_h" = x""yes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_SMPEG_SMPEG_H 1
+_ACEOF
+ HAVE_SDL_SMPEG=smpeg
+fi
+
+done
+
+
+
 
 SDL_LIBS=`"$SDL_CONFIG" --libs`
 SDL_CFLAGS=`"$SDL_CONFIG" --cflags`
@@ -3718,7 +3735,7 @@ $as_echo "$as_me: creating ${PACKAGE_NAME}.gpd" >&6;}
   -configure "./configure $GAUCHE_PACKAGE_CONFIGURE_ARGS"
 
 echo $PACKAGE_VERSION > VERSION
-ac_config_files="$ac_config_files Makefile src/Makefile src/image/Makefile src/ttf/Makefile src/mixer/Makefile src/gfx/Makefile src/net/Makefile lib/Makefile lib/sdl/Makefile src/collide/Makefile"
+ac_config_files="$ac_config_files Makefile src/Makefile src/image/Makefile src/ttf/Makefile src/mixer/Makefile src/gfx/Makefile src/net/Makefile lib/Makefile lib/sdl/Makefile src/collide/Makefile src/smpeg/Makefile"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -4435,6 +4452,7 @@ do
     "lib/Makefile") CONFIG_FILES="$CONFIG_FILES lib/Makefile" ;;
     "lib/sdl/Makefile") CONFIG_FILES="$CONFIG_FILES lib/sdl/Makefile" ;;
     "src/collide/Makefile") CONFIG_FILES="$CONFIG_FILES src/collide/Makefile" ;;
+    "src/smpeg/Makefile") CONFIG_FILES="$CONFIG_FILES src/smpeg/Makefile" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5 ;;
   esac

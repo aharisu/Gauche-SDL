@@ -45,6 +45,8 @@ AC_SUBST(SOEXT)
 AC_SUBST(OBJEXT)
 AC_SUBST(EXEEXT)
 
+CPPFLAGS="$CPPFLAGS `$SDL_CONFIG --cflags`"
+
 ac_default_prefix=`"$GAUCHE_CONFIG" --prefix`
 
 GAUCHE_PKGINCDIR=`"$GAUCHE_CONFIG" --pkgincdir`
@@ -74,6 +76,9 @@ AC_SUBST(HAVE_SDL_TTF)
 
 AC_CHECK_HEADERS(SDL/SDL_net.h, [HAVE_SDL_NET=net], , )
 AC_SUBST(HAVE_SDL_NET)
+
+AC_CHECK_HEADERS(smpeg/smpeg.h, [HAVE_SDL_SMPEG=smpeg], , )
+AC_SUBST(HAVE_SDL_SMPEG)
 
 dnl Check for other programs.
 dnl Add your macro calls to check existence of programs, if you have any.
@@ -117,5 +122,5 @@ AC_MSG_NOTICE([creating ${PACKAGE_NAME}.gpd])
 
 dnl Output
 echo $PACKAGE_VERSION > VERSION
-AC_OUTPUT(Makefile src/Makefile src/image/Makefile src/ttf/Makefile src/mixer/Makefile src/gfx/Makefile src/net/Makefile lib/Makefile lib/sdl/Makefile  src/collide/Makefile)
+AC_OUTPUT(Makefile src/Makefile src/image/Makefile src/ttf/Makefile src/mixer/Makefile src/gfx/Makefile src/net/Makefile lib/Makefile lib/sdl/Makefile  src/collide/Makefile src/smpeg/Makefile)
 

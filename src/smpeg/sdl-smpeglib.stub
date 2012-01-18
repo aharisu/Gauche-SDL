@@ -1,0 +1,303 @@
+
+"
+#include \"gauche-sdl-smpeg.h\"
+#include \"../sdl_type.gen.h\"
+#include \"smpeg_type.gen.h\"
+#include <SDL/SDL_mixer.h>
+"
+
+(include "smpeg_type.gen.stub.header")
+(include "../sdl_type.gen.stub.header")
+(include "../macro.stub.header")
+
+
+(define-cclass <smpeg-info>
+  :built-in
+  "ScmSMPEG_Info*" "Scm_SMPEG_InfoClass"
+  ()
+  (
+   (has-audio? :type <boolean>
+               :setter #f
+               :c-name "has_audio")
+   (has-video? :type <boolean>
+               :setter #f
+               :c-name "has_video")
+   (width :type <fixnum>
+          :setter #f)
+   (height :type <fixnum>
+           :setter #f)
+   (current-frame :type <fixnum>
+                  :setter #f)
+   (current-fps :type <real>
+                :setter #f)
+   (audio-string :type <const-cstring>
+                 :setter #f)
+  (audio-current-frame :type <fixnum>
+                       :setter #f)
+  (current-offset :type <uint32>
+                  :setter #f)
+  (total-size :type <uint32>
+              :setter #f)
+  (current-time :type <real>
+                :setter #f)
+  (total-time :type <real>
+                :setter #f)
+   ))
+
+(define-enum SMPEG_ERROR)
+(define-enum SMPEG_STOPPED)
+(define-enum SMPEG_PLAYING)
+
+(define-cise-expr (smpeg-data wrapper)
+  `(-> ,wrapper smpeg))
+
+(define-cise-stmt raise-smpeg-error 
+  [(_ func-name smpeg)
+    `(Scm_RaiseCondition
+      (SCM_OBJ SCM_CLASS_SDL_ERROR)
+       SCM_RAISE_CONDITION_MESSAGE
+        "%s: %s"
+         ,(symbol->string func-name) (SMPEG_error ,smpeg))])
+
+;;;;;
+;; Create a new SMPEG object from an MPEG file.
+;; This function returns a new SMPEG object.  Use SMPEG_error() to find out
+;; whether or not there was a problem building the MPEG stream.
+;; The audio? parameter indicates if SMPEG should initialize the SDL audio
+;; subsystem. If not, you will have to use the SMPEG_playaudio() function below
+;; to extract the decoded data.
+(define-cproc smpeg-new (file::<const-cstring> 
+                         :optional (audio?::<boolean> #f)) :: <smpeg>
+  (let* ([wrapper :: SMPEGWrapper* (SCM_NEW SMPEGWrapper)])
+    (set! (-> wrapper audio-enable) audio?)
+    (set! (smpeg-data wrapper) (SMPEG_new file NULL 0))
+    (when (SMPEG_error (smpeg-data wrapper))
+      (raise-smpeg-error smpeg-new (smpeg-data wrapper)))
+    (result wrapper)))
+
+;;;;;
+;; The same as above for a file descriptor
+(define-cproc smpeg-new-descr (file::<fixnum> 
+                               :optional (audio?::<boolean> #f)) :: <smpeg>
+  (let* ([wrapper :: SMPEGWrapper* (SCM_NEW SMPEGWrapper)])
+    (set! (-> wrapper audio-enable) audio?)
+    (set! (smpeg-data wrapper) (SMPEG_new_descr file NULL 0))
+    (result wrapper)))
+
+(define-cise-stmt (set-ctx-data var obj)
+  `(cond
+     [(is-type? ,obj <sdl-rw-ops>)
+      (set! ,var (unboxing ,obj <sdl-rw-ops>))]
+     [(is-type? ,obj <sdl-rw-ops-user>)
+      (set! ,var (cast SDL_RWops* (unboxing ,obj <sdl-rw-ops-user>)))]
+     [else (Scm_Error "<sdl-rw-ops> required, but got %S." ,obj)]))
+
+;;;;;
+;; The same for a generic <sdl-rw-ops> structure.
+(define-cproc smpeg-new-rwops (src::<top> 
+                               :optional (audio?::<boolean> #f)) :: <smpeg>
+  (let* ([src-data :: SDL_RWops*]
+         [wrapper :: SMPEGWrapper* (SCM_NEW SMPEGWrapper)])
+    (set-ctx-data src-data src)
+    (set! (-> wrapper audio-enable) audio?)
+    (set! (smpeg-data wrapper) (SMPEG_new_rwops src-data NULL 0))
+    (result wrapper)))
+
+;;;;;
+;; Get current information about an SMPEG object
+(define-cproc smpeg-get-info (mpeg::<smpeg>) :: <smpeg-info>
+  (ENSURE_NOT_NULL mpeg)
+  (let* ([info :: SMPEG_Info* (SCM_NEW SMPEG_Info)])
+    (SMPEG_getinfo (smpeg-data mpeg) info)
+    (result info)))
+
+;;;;;
+;; Enable or disable audio playback in MPEG stream
+(define-cproc smpeg-enable-audio (mpeg::<smpeg> enable::<boolean>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (set! (-> mpeg audio-enable) enable))
+
+;;;;;
+;; Enable or disable video playback in MPEG stream
+(define-cproc smpeg-enable-video (mpeg::<smpeg> enable::<boolean>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_enablevideo (smpeg-data mpeg) enable))
+
+;;;;;
+;; Delete an SMPEG object
+(define-cproc smpeg-delete (mpeg::<smpeg>) :: <void>
+  (when mpeg
+    (SMPEG_delete (smpeg-data mpeg))
+    (set! (-> (SCM_FOREIGN_POINTER mpeg-scm) ptr) 0)))
+
+;;;;;
+;; Get the current status of an SMPEG object
+(define-cproc smpeg-status (mpeg::<smpeg>) :: <fixnum>
+  (ENSURE_NOT_NULL mpeg)
+  (result (SMPEG_status (smpeg-data mpeg))))
+
+;;;;;
+;; Set the audio volume of an MPEG stream, in the range 0-100
+(define-cproc smpeg-set-volume (mpeg::<smpeg> volume::<fixnum>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_setvolume (smpeg-data mpeg) volume))
+
+;;;;;
+;; Set the destination surface for MPEG video playback
+;; 'surfLock' is a mutex used to synchronize access to 'dst', and can be #f.
+(define-cproc smpeg-set-display (mpeg::<smpeg> dst::<sdl-surface> 
+                                 :optional (surf-lock::<top> #f)) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (ENSURE_NOT_NULL dst)
+  (let* ([lock :: SDL_mutex*])
+    (cond
+      [(false? surf-lock) (set! lock 0)]
+      [(is-type? surf-lock <sdl-mutex>)
+       (set! lock (unboxing surf-lock <sdl-mutex>))
+       (ENSURE_NOT_NULL lock)])
+    (SMPEG_setdisplay (smpeg-data mpeg) dst lock NULL)))
+
+;;;;;
+;; Set or clear looping play on an SMPEG object
+(define-cproc smpeg-loop (mpeg::<smpeg> repeat?::<boolean>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_loop (smpeg-data mpeg) repeat?))
+
+;;;;;
+;; Scale pixel display on an SMPEG object
+(define-cproc smpeg-scale-xy (mpeg::<smpeg> width::<fixnum> height::<fixnum>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_scaleXY (smpeg-data mpeg) width height))
+
+;;;;;
+;; Scale pixel display on an SMPEG object
+(define-cproc smpeg-scale (mpeg::<smpeg> scale::<fixnum>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_scale (smpeg-data mpeg) scale))
+
+;;;;;
+;; Move the video display area within the destination surface
+(define-cproc smpeg-move (mpeg::<smpeg> x::<fixnum> y::<fixnum>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_move (smpeg-data mpeg) x y))
+
+;;;;;
+;; Set the region of the video to be shown
+(define-cproc smpeg-set-display-region (mpeg::<smpeg> x::<fixnum> y::<fixnum> w::<fixnum> h::<fixnum>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_setdisplayregion (smpeg-data mpeg) x y w h))
+
+;;;;;
+;; Play an SMPEG object
+(define-cproc smpeg-play (mpeg::<smpeg>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (let* ([use-audio :: int (logand (-> mpeg audio-enable)
+                                   (Mix_QuerySpec NULL NULL NULL))]
+         [data :: SMPEG* (smpeg-data mpeg)])
+    (when use-audio
+      (let* ([audiofmt :: SDL_AudioSpec]
+             [format :: Uint16]
+             [freq :: int]
+             [channels :: int])
+        (SMPEG_enableaudio data 0)
+        ;; Tell SMPEG what the audio formats
+        (Mix_QuerySpec (& freq) (& format) (& channels))
+        (set! (@ audiofmt.format) format)
+        (set! (@ audiofmt.freq) freq)
+        (set! (@ audiofmt.channels) channels)
+        (SMPEG_actualSpec data (& audiofmt))
+        ;; Hook in the MPEG music mixer
+        (Mix_HookMusic NULL NULL)
+        (Mix_HookMusic SMPEG_playAudioSDL data)
+        (SMPEG_enableaudio data 1)))
+    (SMPEG_play data)))
+
+;;;;;
+;; Pause/Resume playback of an SMPEG object
+(define-cproc smpeg-pause (mpeg::<smpeg>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_pause (smpeg-data mpeg)))
+
+;;;;;
+;; Stop playback of an SMPEG object
+(define-cproc smpeg-stop (mpeg::<smpeg>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_stop (smpeg-data mpeg))
+  (Mix_HookMusic NULL NULL))
+
+;;;;;
+;; Rewind the play position of an SMPEG object to the beginning of the MPEG
+(define-cproc smpeg-rewind (mpeg::<smpeg>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_rewind (smpeg-data mpeg)))
+
+;;;;;
+;; Seek 'bytes' bytes in the MPEG stream
+(define-cproc smpeg-seek (mpeg::<smpeg> bytes::<int>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_seek (smpeg-data mpeg) bytes))
+
+;;;;;
+;; Skip 'seconds' seconds in the MPEG stream
+(define-cproc smpeg-skip (mpeg::<smpeg> seconds::<real>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_skip (smpeg-data mpeg) seconds))
+
+;;;;;
+;; Render a particular frame in the MPEG video
+;; API CHANGE: This function no longer takes a target surface and position.
+;;             Use smpeg-set-display and smpeg-move to set this information.
+(define-cproc smpeg-render-frame (mpeg::<smpeg> frame-num::<fixnum>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_renderFrame (smpeg-data mpeg) frame-num))
+
+;;;;;
+;; Render the last frame of an MPEG video
+(define-cproc smpeg-render-final (mpeg::<smpeg> dst::<sdl-surface> x::<fixnum> y::<fixnum>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (ENSURE_NOT_NULL dst)
+  (SMPEG_renderFinal (smpeg-data mpeg) dst x y))
+
+"
+static SMPEG_Filter* filters[3];
+#define NULL_FILTER 0
+#define BILINEAR_FILTER 1
+#define DEBLOCKING_FILTER 2
+#define NUM_FILTERS 3
+__attribute__((constructor))
+static void init_filters()
+{
+  filters[NULL_FILTER] = SMPEGfilter_null();
+  filters[BILINEAR_FILTER] = SMPEGfilter_bilinear();
+  filters[DEBLOCKING_FILTER] = SMPEGfilter_deblocking();
+}
+"
+(define-enum NULL_FILTER)
+(define-enum BILINEAR_FILTER)
+(define-enum DEBLOCKING_FILTER)
+;;;;;
+;; Set video filter
+(define-cproc smpeg-filter (mpeg::<smpeg> filter::<fixnum>) :: <void>
+  (ENSURE_NOT_NULL mpeg)
+  (when (or (< filter 0) (>= filter NUM_FILTERS))
+    (Scm_Error "There isn't that filter"))
+  (SMPEG_filter (smpeg-data mpeg) (aref filters filter)))
+
+;;;;;
+;; Get the best SDL audio spec for the audio stream
+(define-cproc smpeg-wanted-spec (mpeg::<smpeg>) :: <top>
+  (ENSURE_NOT_NULL mpeg)
+  (let* ([wrapper::SDL_AudioSpecWrapper* (SCM_NEW SDL_AudioSpecWrapper)])
+    (set! (@ wrapper->callback) (cast ScmClosure* SCM_UNBOUND))
+    (set! (@ wrapper->userdata) SCM_UNBOUND)
+    (if (SMPEG_wantedSpec (smpeg-data mpeg) (& (@ wrapper->audio)))
+      (result (boxing wrapper <sdl-audio-spec>))
+      (result (boxing 0 <boolean>)))))
+
+;;;;;
+;; Return NULL if there is no error in the MPEG stream, or an error message
+;; if there was a fatal error in the MPEG stream for the SMPEG object.
+(define-cproc smpeg-error (mpeg::<smpeg>) :: <const-cstring>
+  (ENSURE_NOT_NULL mpeg)
+  (SMPEG_error (smpeg-data mpeg)))
+
