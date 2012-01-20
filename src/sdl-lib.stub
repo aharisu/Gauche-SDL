@@ -2172,6 +2172,7 @@ ScmVM* Scm_AudioVM;
 ;; Lock the mutex
 ;; Raise <sdl-error> if there was an error.
 (define-cproc sdl-mutex-p (mutex::<sdl-mutex>) :: <void>
+  (ENSURE_NOT_NULL mutex)
   (unless (zero? (SDL_mutexP mutex))
     (raise-sdl-error sdl-mutex-p)))
 
@@ -2179,6 +2180,7 @@ ScmVM* Scm_AudioVM;
 ;; Lock the mutex
 ;; Raise <sdl-error> if there was an error.
 (define-cproc sdl-lock-mutex (mutex::<sdl-mutex>) :: <void>
+  (ENSURE_NOT_NULL mutex)
   (unless (zero? (SDL_LockMutex mutex))
     (raise-sdl-error sdl-lock-mutex)))
 
@@ -2188,6 +2190,7 @@ ScmVM* Scm_AudioVM;
 ;;  the current thread, and doing so results in undefined behavior.
 ;; Raise <sdl-error> if there was an error.
 (define-cproc sdl-mutex-v (mutex::<sdl-mutex>) :: <void>
+  (ENSURE_NOT_NULL mutex)
   (unless (zero? (SDL_mutexV mutex))
     (raise-sdl-error sdl-mutex-v)))
 
@@ -2197,12 +2200,14 @@ ScmVM* Scm_AudioVM;
 ;;  the current thread, and doing so results in undefined behavior.
 ;; Raise <sdl-error> if there was an error.
 (define-cproc sdl-unlock-mutex (mutex::<sdl-mutex>) :: <void>
+  (ENSURE_NOT_NULL mutex)
   (unless (zero? (SDL_UnlockMutex mutex))
     (raise-sdl-error sdl-unlock-mutex)))
 
 ;;;;;
 ;; Destroy a mutex
 (define-cproc sdl-destroy-mutex (mutex::<sdl-mutex>) :: <void>
+  (ENSURE_NOT_NULL mutex)
   (when (not (zero? mutex))
     (SDL_DestroyMutex mutex)
     (set! (-> (SCM_FOREIGN_POINTER mutex_scm) ptr) 0)))
@@ -2223,6 +2228,7 @@ ScmVM* Scm_AudioVM;
 ;; This function suspends the calling thread until the semaphore pointed 
 ;; to by sem has a positive count. It then atomically decreases the semaphore count.
 (define-cproc sdl-sem-wait (sem::<sdl-semaphore>) :: <int>
+  (ENSURE_NOT_NULL sem)
   (result (SDL_SemWait sem)))
 
 ;;;;;
@@ -2230,6 +2236,7 @@ ScmVM* Scm_AudioVM;
 ;; @return #t if the wait succeeds,
 ;;  #f if the wait would block, and raise <sdl-error> on error.
 (define-cproc sdl-sem-try-wait (sem::<sdl-semaphore>) :: <boolean>
+  (ENSURE_NOT_NULL sem)
   (case (SDL_SemTryWait sem)
     [(0) (result 1)]
     [(SDL_MUTEX_TIMEDOUT) (result 0)]
@@ -2243,6 +2250,7 @@ ScmVM* Scm_AudioVM;
 ;;  On some platforms this function is implemented by looping with a delay
 ;;  of 1 ms, and so should be avoided if possible.
 (define-cproc sdl-sem-wait-timeout (sem::<sdl-semaphore> ms::<uint32>) ::<boolean>
+  (ENSURE_NOT_NULL sem)
   (case (SDL_SemWaitTimeout sem ms)
     [(0) (result 1)]
     [(SDL_MUTEX_TIMEDOUT) (result 0)]
@@ -2253,12 +2261,14 @@ ScmVM* Scm_AudioVM;
 ;; Atomically increases the semaphore's count (not blocking).
 ;; Raise <sdl-error> if there was an error.
 (define-cproc sdl-sem-post (sem::<sdl-semaphore>) :: <void>
+  (ENSURE_NOT_NULL sem)
   (unless (zero? (SDL_SemPost sem))
     (raise-sdl-error sdl-sem-pos)))
 
 ;;;;;
 ;; Returns the current count of the semaphore
 (define-cproc sdl-sem-value (sem::<sdl-semaphore>) :: <uint32>
+  (ENSURE_NOT_NULL sem)
   (result (SDL_SemValue sem)))
 
 ;;;;;
@@ -2277,6 +2287,7 @@ ScmVM* Scm_AudioVM;
 ;; Restart one of the threads that are waiting on the condition variable,
 ;; Raise <sdl-error> if there was an error.
 (define-cproc sdl-cond-signal (cond::<sdl-cond>) :: <void>
+  (ENSURE_NOT_NULL cond)
   (unless (zero? (SDL_CondSignal cond))
     (raise-sdl-error sdl-cond-signal)))
 
@@ -2285,6 +2296,7 @@ ScmVM* Scm_AudioVM;
 ;; Restart all threads that are waiting on the condition variable,
 ;; Raise <sdl-error> if there was an error.
 (define-cproc sdl-cond-broadcast (cond::<sdl-cond>) :: <void>
+  (ENSURE_NOT_NULL cond)
   (unless (zero? (SDL_CondBroadcast cond))
     (raise-sdl-error sdl-cond-broadcast)))
 
@@ -2294,6 +2306,8 @@ ScmVM* Scm_AudioVM;
 ;;  The mutex is re-locked once the condition variable is signaled.
 ;; Raise <sdl-error> if there was an error.
 (define-cproc sdl-cond-wait (cond::<sdl-cond> mutex::<sdl-mutex>) :: <void>
+  (ENSURE_NOT_NULL cond)
+  (ENSURE_NOT_NULL mutex)
   (unless (zero? (SDL_CondWait cond mutex))
     (raise-sdl-error sdl-cond-wait)))
 
@@ -2304,6 +2318,8 @@ ScmVM* Scm_AudioVM;
 ;;  On some platforms this function is implemented by looping with a delay
 ;;  of 1 ms, and so should be avoided if possible.
 (define-cproc sdl-cond-wait-timeout (cond::<sdl-cond> mutex::<sdl-mutex> ms::<uint32>) :: <boolean>
+  (ENSURE_NOT_NULL cond)
+  (ENSURE_NOT_NULL mutex)
   (case (SDL_CondWaitTimeout cond mutex ms)
     [(0) (result 1)]
     [(SDL_MUTEX_TIMEDOUT) (result 0)]
