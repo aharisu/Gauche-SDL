@@ -72,6 +72,7 @@ install :
 	    $(INSTALL) -m 444 $$f $(GAUCHE_PKGLIBDIR)/sdl/$$f; \
 	  fi; \
 	done
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) install); fi
 
 uninstall :
 	@for f in $(SCMFILES) _end; do \
@@ -79,13 +80,17 @@ uninstall :
 	    $(INSTALL) -U $(GAUCHE_PKGLIBDIR)/sdl $$f; \
 	  fi; \
 	done
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) uninstall); fi
 
 clean :
 	rm -rf core *~ $(GENERATED)
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) clean); fi
 
 realclean : clean
 	rm -rf $(CONFIG_GENERATED)
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) realclean); fi
 
 maintainer-clean : clean
 	rm -rf $(CONFIG_GENERATED)
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) maintainer-clean); fi
 

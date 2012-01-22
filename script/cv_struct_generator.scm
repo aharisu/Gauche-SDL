@@ -130,7 +130,7 @@
                            Scm_MakeForeignPointerClass(mod, \"~a\",
                                                             NULL,
                                                             ~a,
-                                                            SCM_FOREIGN_POINTER_KEEP_IDENTITY|SCM_FOREIGN_POINTER_MAP_NULL);"
+                                                            SCM_FOREIGN_POINTER_MAP_NULL);"
                            name scm-type (if (string? finalize)
                                            (string-append "Scm_cleanup_" name)
                                            "NULL")))

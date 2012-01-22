@@ -461,7 +461,7 @@
         (return (boxing vec <nnvector>))))))
 
 (define-cfn string->bytevector!
-  (v::nnvector* tstart::int s::ScmString* start::int end::int) :: void :static
+  (v::nnvector* tstart::int s::ScmString* start::int end::int) :: int 
   (let* ([tlen::int (@ v->size)])
     (when (and (>= tstart 0) (< tstart tlen))
       (let* ([size::u_int] [len::u_int]
@@ -472,9 +472,11 @@
                [ep::(const char*)
                     (?: (== end len) (+ ss size) (Scm_StringPosition s end))]
                [buf::(char*) (+ (cast char* (@ v->buf)) tstart)])
-          (if (> (- tlen tstart) (- ep sp))
-            (memcpy buf sp (- ep sp))
-            (memcpy buf sp (- tlen tstart))))))))
+          (let* ([copy-len :: int (?: (> (- tlen tstart) (- ep sp))
+                                      (- ep sp)
+                                      (- tlen tstart))])
+            (memcpy buf sp copy-len)
+            (return copy-len)))))))
 
 (define-cfn string->wordvector (type::int s::ScmString* start::int end::int) :static
   (let* ([size::u_int] [len::u_int]
@@ -508,8 +510,7 @@
   (string->bytevector! (& v) tstart s start end)
   (result v))
 
-
-(define-cfn bytevector->string (v::nnvector* start::int end::int) :static
+(define-cfn bytevector->string (v::nnvector* start::int end::int)
   (let* ([len::int (@ v->size)])
     (SCM_CHECK_START_END start end len)
     (return (Scm_MakeString (+ (cast char* (@ v->buf)) start)
