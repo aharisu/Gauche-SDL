@@ -45,7 +45,7 @@ AC_SUBST(SOEXT)
 AC_SUBST(OBJEXT)
 AC_SUBST(EXEEXT)
 
-CPPFLAGS="$CPPFLAGS `$SDL_CONFIG --cflags`"
+CPPFLAGS="$CPPFLAGS `$SDL_CONFIG --cflags` `$SDL_CONFIG --libs`"
 
 ac_default_prefix=`"$GAUCHE_CONFIG" --prefix`
 

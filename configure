@@ -2399,7 +2399,7 @@ EXEEXT=`"$GAUCHE_CONFIG" --executable-suffix`
 
 
 
-CPPFLAGS="$CPPFLAGS `$SDL_CONFIG --cflags`"
+CPPFLAGS="$CPPFLAGS `$SDL_CONFIG --cflags` `$SDL_CONFIG --static-libs`"
 
 ac_default_prefix=`"$GAUCHE_CONFIG" --prefix`
 
