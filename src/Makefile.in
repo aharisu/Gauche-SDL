@@ -42,7 +42,7 @@ ARCHFILES = gauche-sdl.$(SOEXT)
 HEADERS   = 
 
 TARGET    = $(ARCHFILES)
-GENERATED = *.gen.* *lib.c gauche-sdl.$(SOEXT)
+GENERATED = *.o *.gen.* *lib.c gauche-sdl.$(SOEXT)
 CONFIG_GENERATED = Makefile config.cache config.log config.status \
 		   configure.lineno autom4te*.cache $(PACKAGE).gpd
 
