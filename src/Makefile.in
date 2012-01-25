@@ -25,6 +25,7 @@ HAVE_SDL_SMPEG = @HAVE_SDL_SMPEG@
 
 
 SCRIPTDIR = "@SCRIPTDIR@"
+OUTDIR = "@OUTDIR@"
 GENSTUB = "@GENSTUB@"
 
 # Other parameters
@@ -144,4 +145,15 @@ maintainer-clean : clean
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) maintainer-clean); fi
 	@if test X$(HAVE_SDL_MIXER) != X -a X$(HAVE_SDL_SMPEG) != X; then (cd smpeg; $(MAKE) maintainer-clean); fi
 	@cd collide; $(MAKE) maintainer-clean
+
+collect :
+	@if test "$(HEADERS)" != ""; then (cp -p -u $(HEADERS) $(OUTDIR)/header/); fi
+	@if test "$(ARCHFILES)" != ""; then (cp -p -u $(ARCHFILES) $(OUTDIR)/dll/); fi
+	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) collect); fi
+	@if test X$(HAVE_SDL_TTF) != X; then (cd ttf; $(MAKE) collect); fi
+	@if test X$(HAVE_SDL_MIXER) != X; then (cd mixer; $(MAKE) collect); fi
+	@if test X$(HAVE_SDL_GFX) != X; then (cd gfx; $(MAKE) collect); fi
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) collect); fi
+	@if test X$(HAVE_SDL_MIXER) != X -a X$(HAVE_SDL_SMPEG) != X; then (cd smpeg; $(MAKE) collect); fi
+	@cd collide; $(MAKE) collect
 

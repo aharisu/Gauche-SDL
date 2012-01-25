@@ -7,6 +7,8 @@ GAUCHE_PKGLIBDIR  = "$(DESTDIR)@GAUCHE_PKGLIBDIR@"
 
 PACKAGE = @PACKAGE@
 
+OUTDIR = "@OUTDIR@"
+
 all :
 	cd src; $(MAKE) all
 	cd lib; $(MAKE) all
@@ -43,4 +45,11 @@ maintainer-clean : clean
 	cd src; $(MAKE) maintainer-clean
 	cd lib; $(MAKE) maintainer-clean
 	rm -rf $(CONFIG_GENERATED) configure VERSION
+
+collect :
+	@mkdir -p $(OUTDIR)/scm
+	@mkdir -p $(OUTDIR)/dll
+	@mkdir -p $(OUTDIR)/header
+	cd src; $(MAKE) collect
+	cd lib; $(MAKE) collect
 

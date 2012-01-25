@@ -109,6 +109,8 @@ AC_SUBST(SCRIPTDIR)
 AC_SUBST(GENSTUB, "$SCRIPTDIR/genstub.scm")
 AC_SUBST(GENDOC, "$SCRIPTDIR/gendoc.scm")
 
+AC_SUBST(OUTDIR, "`$PWD`/out")
+
 
 dnl Check for libraries
 dnl Add your macro calls to check required libraries, if you have any.

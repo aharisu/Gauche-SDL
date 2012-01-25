@@ -23,6 +23,7 @@ TARGET = sdl.scm
 
 STUBDIR=@STUBDIR@
 SCRIPTDIR=@SCRIPTDIR@
+OUTDIR = "@OUTDIR@"
 GENDOC="@GENDOC@"
 
 SCMFILES = sdl.scm
@@ -57,4 +58,8 @@ realclean : clean
 maintainer-clean : clean
 	rm -rf $(CONFIG_GENERATED)
 	cd sdl ; $(MAKE) maintainer-clean
+
+collect :
+	@if test "$(SCMFILES)" != ""; then (cp -p -u $(SCMFILES) $(OUTDIR)/scm/); fi
+	cd sdl ; $(MAKE) collect
 

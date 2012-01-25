@@ -595,6 +595,7 @@ ac_includes_default="\
 
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+OUTDIR
 GENDOC
 GENSTUB
 SCRIPTDIR
@@ -2399,7 +2400,7 @@ EXEEXT=`"$GAUCHE_CONFIG" --executable-suffix`
 
 
 
-CPPFLAGS="$CPPFLAGS `$SDL_CONFIG --cflags` `$SDL_CONFIG --static-libs`"
+CPPFLAGS="$CPPFLAGS `$SDL_CONFIG --cflags` `$SDL_CONFIG --libs`"
 
 ac_default_prefix=`"$GAUCHE_CONFIG" --prefix`
 
@@ -3723,6 +3724,9 @@ SCRIPTDIR="`$PWD`/script"
 GENSTUB="$SCRIPTDIR/genstub.scm"
 
 GENDOC="$SCRIPTDIR/gendoc.scm"
+
+
+OUTDIR="`$PWD`/out"
 
 
 
