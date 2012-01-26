@@ -40,7 +40,7 @@ ARCHFILES = gauche-sdl-collide.$(SOEXT)
 HEADERS   = 
 
 TARGET    = $(ARCHFILES)
-GENERATED = *.gen.* *lib.c gauche-sdl-collide.$(SOEXT)
+GENERATED = *.o *.gen.* *lib.c gauche-sdl-collide.$(SOEXT)
 CONFIG_GENERATED = Makefile
 
 GAUCHE_PKGINCDIR  = "$(DESTDIR)@GAUCHE_PKGINCDIR@"

@@ -39,7 +39,7 @@ ARCHFILES = gauche-sdl-image.$(SOEXT)
 HEADERS   = 
 
 TARGET    = $(ARCHFILES)
-GENERATED = *.gen.* *lib.c gauche-sdl-image.$(SOEXT)
+GENERATED = *.o *.gen.* *lib.c gauche-sdl-image.$(SOEXT)
 CONFIG_GENERATED = Makefile
 
 GAUCHE_PKGINCDIR  = "$(DESTDIR)@GAUCHE_PKGINCDIR@"
