@@ -19,14 +19,14 @@ INSTALL        = "@GAUCHE_INSTALL@" -C
 
 GAUCHE_PKGLIBDIR  = "$(DESTDIR)@GAUCHE_PKGLIBDIR@"
 
-TARGET = sdl.scm
+TARGET = sdl.scm nnvector.scm
 
 STUBDIR=@STUBDIR@
 SCRIPTDIR=@SCRIPTDIR@
 GENDOC="@GENDOC@"
 
-SCMFILES = sdl.scm
-GENERATED = sdl.scm
+SCMFILES = sdl.scm nnvector.scm
+GENERATED = sdl.scm nnvector.scm
 
 CONFIG_GENERATED = Makefile
 
@@ -35,6 +35,9 @@ all : $(TARGET)
 
 sdl.scm: $(STUBDIR)/sdl-lib.stub sdl.template
 	$(GOSH) -I$(SCRIPTDIR) $(GENDOC) -s $(STUBDIR)/sdl-lib.stub -t sdl.template -o sdl.scm
+
+nnvector.scm: $(STUBDIR)/nnvector-lib.stub nnvector.template
+	$(GOSH) -I$(SCRIPTDIR) $(GENDOC) -s $(STUBDIR)/nnvector-lib.stub -t nnvector.template -o nnvector.scm
 
 test :
 

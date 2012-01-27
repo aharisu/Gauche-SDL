@@ -598,6 +598,7 @@ LIBOBJS
 GENDOC
 GENSTUB
 SCRIPTDIR
+GSDL_COMPILE_LIBS
 GSDL_LIBS
 GSDL_LDFLAGS
 EXTLIBDIR
@@ -3701,10 +3702,12 @@ SDL_CFLAGS=`"$SDL_CONFIG" --cflags`
 
 
 GSDL_LIBS=""
+GSDL_COMPILE_LIBS=""
 PWD="pwd"
 case "$target" in
   *mingw*)
-    GSDL_LIBS="-lgauche-sdl"
+    GSDL_LIBS="-lgauche-sdl -lnnvector"
+    GSDL_COMPILE_LIBS="-lnnvector"
     PWD="pwd -W"
   ;;
 esac
@@ -3714,6 +3717,7 @@ EXTLIBDIR="`$PWD`/ext_lib"
 
 
 GSDL_LDFLAGS="-L$STUBDIR"
+
 
 
 

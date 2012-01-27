@@ -31,6 +31,8 @@ GENSTUB = "@GENSTUB@"
 SOEXT  = @SOEXT@
 OBJEXT = @OBJEXT@
 EXEEXT = @EXEEXT@
+GSDL_LDFLAGS = @GSDL_LDFLAGS@
+GSDL_COMPILE_LIBS = @GSDL_COMPILE_LIBS@
 LOCAL_PATHS = "@LOCAL_PATHS@"
 
 SDL_LIBS = -lSDL
@@ -38,7 +40,7 @@ SDL_LIBS = -lSDL
 # Module-specific stuff
 PACKAGE = @PACKAGE@
 
-ARCHFILES = gauche-sdl.$(SOEXT)
+ARCHFILES = gauche-sdl.$(SOEXT) nnvector.$(SOEXT)
 HEADERS   = 
 
 TARGET    = $(ARCHFILES)
@@ -54,7 +56,13 @@ gauche_sdl_SRCS = gauche-sdl.c \
 									sdl-lib.c \
 									sdl_type.gen.c
 
+nnvector_SRCS = nnvector.c	\
+								nnvector-lib.c	\
+								nnvector_type.gen.c
+
 sdl_STUB_TYPE_HDRS = sdl_type.gen.stub.header
+
+nnvector_STUB_TYPE_HDRS = nnvector_type.gen.stub.header
 
 all : $(TARGET)
 	@if test X$(HAVE_SDL_IMAGE) != X; then (cd image; $(MAKE) all); fi
@@ -68,18 +76,29 @@ all : $(TARGET)
 #generate stub -> c file
 .SUFFIXES:.stub .c
 
+nnvector-lib.c: $(nnvector_STUB_TYPE_HDRS)
+
+#generate type file
+nnvector_type.gen.c nnvector_type.gen.h nnvector_type.gen.stub.header: nnvector_type.scm
+	$(GOSH) -I$(SCRIPTDIR) nnvector_type.scm
+
+#compile sdl
+nnvector.$(SOEXT): $(nnvector_SRCS)
+	$(GAUCHE_PACKAGE) compile --local=$(LOCAL_PATHS) --verbose nnvector $(nnvector_SRCS)
+
+
 .stub.c:
 	$(GOSH) -I$(SCRIPTDIR) $(GENSTUB) $<
 
-sdl-lib.c: $(sdl_STUB_TYPE_HDRS)
+sdl-lib.c: $(sdl_STUB_TYPE_HDRS) $(nnvector_STUB_TYPE_HDRS)
 
 #generate type file
 sdl_type.gen.c sdl_type.gen.h sdl_type.gen.stub.header: sdl_type.scm
 	$(GOSH) -I$(SCRIPTDIR) sdl_type.scm
 
 #compile sdl
-gauche-sdl.$(SOEXT): $(gauche_sdl_SRCS)
-	$(GAUCHE_PACKAGE) compile --local=$(LOCAL_PATHS) --verbose --libs="$(SDL_LIBS)" gauche-sdl $(gauche_sdl_SRCS)
+gauche-sdl.$(SOEXT): $(gauche_sdl_SRCS) nnvector.$(SOEXT)
+	$(GAUCHE_PACKAGE) compile --local=$(LOCAL_PATHS) --verbose --ldflags="$(GSDL_LDFLAGS)" --libs="$(SDL_LIBS) $(GSDL_COMPILE_LIBS)" gauche-sdl $(gauche_sdl_SRCS)
 
 test : all
 	@rm -f test.log

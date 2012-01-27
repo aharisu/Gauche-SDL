@@ -1,5 +1,5 @@
 ;;;
-;;; gauche_sdl
+;;; nnvector_type.scm
 ;;;
 ;;; MIT License
 ;;; Copyright 2011-2012 aharisu
@@ -29,43 +29,30 @@
 ;;; foo.yobina@gmail.com
 ;;;
 
-;;;;;
-;;@type cmd
-;;@@parse-relative #f
+(load "cv_struct_generator")
 
-(define-module sdl
-  (use nnvector)
-  (use gauche.sequence)
-  (use util.queue)
-  (export-all)
-  )
-(select-module sdl)
+(use file.util)
 
-;; Loads extension
-(dynamic-load "gauche-sdl")
+(define (main args)
+  (gen-type (simplify-path (path-sans-extension (car args)))
+            structs foreign-pointer
+            (lambda () ;;prologue
+              (cgen-extern "//sdl header")
+              (cgen-extern "#include\"nnvector.h\"")
+              (cgen-extern "")
+              )
+            (lambda () ;;epilogue
+              ))
+  0)
 
-;;for <sdl-palette>
 
-(define-method call-with-iterator ((v <sdl-palette>) proc . opts)
-  (let-keywords opts ([start #f])
-    (let ([len (slot-ref v 'ncolors)]
-          [i (or start 0)])
-      (proc (lambda () (>= i len))
-            (lambda () (begin0 (palette-ref v i)
-                         (inc! i)))))))
+;;sym-name sym-scm-type pointer? finalize-name finalize-ref
+(define structs 
+  '(
+    (nnvector <nnvector> #f #f "")
+    ))
 
-(define-method call-with-builder ((v <sdl-palette-meta>) proc . opts)
-  (let-keywords opts ((size #f))
-    (if size
-      (let ([v (make-palette size)]
-            [i 0])
-        (proc (lambda (item) (palette-set! v i item) (inc! i))
-              (lambda () v)))
-      (let ([q (make-queue)])
-        (proc (lambda (item) (enqueue! q item))
-              (lambda () (list->palette (dequeue-all! q))))))))
-
-(define-method referencer ((v <sdl-palette>)) palette-ref)
-(define-method modifier ((v <sdl-palette>)) palette-set!)
-(define-method size-of ((v <sdl-palette>)) (slot-ref v 'ncolors))
-
+;;sym-name sym-scm-type pointer? finalize finalize-ref 
+(define foreign-pointer 
+  '(
+    ))

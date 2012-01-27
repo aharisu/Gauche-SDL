@@ -68,7 +68,7 @@ mixer_type.gen.c mixer_type.gen.h mixer_type.gen.stub.header: mixer_type.scm
 	$(GOSH) -I$(SCRIPTDIR) mixer_type.scm
 
 #compile mixer
-gauche-sdl-mixer.$(SOEXT): $(gauche_sdl_mixer_SRCS) ../gauche-sdl.$(SOEXT)
+gauche-sdl-mixer.$(SOEXT): $(gauche_sdl_mixer_SRCS) ../gauche-sdl.$(SOEXT) ../nnvector.$(SOEXT)
 	$(GAUCHE_PACKAGE) compile --cflags="$(SDL_CFLAGS)" --local=$(LOCAL_PATHS) --verbose --ldflags="$(GSDL_LDFLAGS)" --libs="$(SDL_LIBS) $(gauche_SDL_LIBS)" gauche-sdl-mixer $(gauche_sdl_mixer_SRCS)
 
 test : all

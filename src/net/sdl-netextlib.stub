@@ -32,9 +32,11 @@
 "
 #include \"gauche-sdl-netext.h\"
 #include \"../sdl_type.gen.h\"
+#include \"../nnvector_type.gen.h\"
 "
 
 (include "../sdl_type.gen.stub.header")
+(include "../nnvector_type.gen.stub.header")
 (include "../macro.stub.header")
 
 (define-cise-stmt (builder-set-len vec pos size len)

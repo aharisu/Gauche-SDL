@@ -89,10 +89,12 @@ AC_SUBST(SDL_LIBS)
 AC_SUBST(SDL_CFLAGS)
 
 GSDL_LIBS=""
+GSDL_COMPILE_LIBS=""
 PWD="pwd"
 case "$target" in
   *mingw*)
-    GSDL_LIBS="-lgauche-sdl"
+    GSDL_LIBS="-lgauche-sdl -lnnvector"
+    GSDL_COMPILE_LIBS="-lnnvector"
     PWD="pwd -W"
   ;;
 esac
@@ -102,6 +104,7 @@ AC_SUBST(EXTLIBDIR, "`$PWD`/ext_lib")
 GSDL_LDFLAGS="-L$STUBDIR"
 AC_SUBST(GSDL_LDFLAGS)
 AC_SUBST(GSDL_LIBS)
+AC_SUBST(GSDL_COMPILE_LIBS)
 
 
 SCRIPTDIR="`$PWD`/script"

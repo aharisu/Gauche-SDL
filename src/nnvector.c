@@ -1,5 +1,5 @@
 /*
- * nnvector.h
+ * nnvector.c
  *
  * MIT License
  * Copyright 2011-2012 aharisu
@@ -29,43 +29,25 @@
  * foo.yobina@gmail.com
  */
 
-#ifndef __NNVECTOR_H__
-#define __NNVECTOR_H__
+#include "nnvector.h"
 
-#include <gauche.h>
-#include <gauche/extend.h>
-#include <gauche/class.h>
 
-SCM_DECL_BEGIN
+/*
+* Module initialization function.
+*/
+extern void Scm_Init_nnvector_lib(ScmModule*);
+extern void Scm_Init_nnvector_type(ScmModule*);
 
-#define NN_SIZE_1 1
-#define NN_SIZE_2 2
-#define NN_SIZE_4 4
+void Scm_Init_nnvector(void)
+{
+  ScmModule *mod; 
 
-#define NN_SIZE_MASK 0xff
-
-#define NN_SIGN_U 0x100
-#define NN_SIGN_S 0x200
-#define NN_SIGN_BOOLEAN 0x300
-
-#define TYPE_U8 (NN_SIZE_1 | NN_SIGN_U)
-#define TYPE_U16 (NN_SIZE_2 | NN_SIGN_U)
-#define TYPE_U32 (NN_SIZE_4 | NN_SIGN_U)
-#define TYPE_S8 (NN_SIZE_1 | NN_SIGN_S)
-#define TYPE_S16 (NN_SIZE_2 | NN_SIGN_S)
-#define TYPE_S32 (NN_SIZE_4 | NN_SIGN_S)
-#define TYPE_BOOLEAN (NN_SIZE_1 | NN_SIGN_BOOLEAN)
-
-#define NNVECTOR_LENGTH2SIZE(type, len) (((type) & NN_SIZE_MASK) * (len))
-#define NNVECTOR_SIZE2LENGTH(type, size) ((size) / ((type) & NN_SIZE_MASK))
-
-typedef struct nnvectorRec {
-  unsigned char* buf;
-  unsigned int size;
-  int type;
-}nnvector;
-
-SCM_DECL_END
-
-#endif //__NNVECTOR_H__
-
+  /* Register this DSO to Gauche */ 
+  SCM_INIT_EXTENSION(gauche_nnvector); 
+  /* Create the module if it doesn't exist yet. */
+  mod = SCM_MODULE(SCM_FIND_MODULE("nnvector", TRUE));
+ 
+  /* Register stub-generated procedures */
+  Scm_Init_nnvector_lib(mod);
+  Scm_Init_nnvector_type(mod);
+}

@@ -1,5 +1,5 @@
 ;;;
-;;; gauche_sdl
+;;; nnvector.scm
 ;;;
 ;;; MIT License
 ;;; Copyright 2011-2012 aharisu
@@ -33,39 +33,39 @@
 ;;@type cmd
 ;;@@parse-relative #f
 
-(define-module sdl
-  (use nnvector)
+(define-module nnvector
   (use gauche.sequence)
-  (use util.queue)
   (export-all)
   )
-(select-module sdl)
+(select-module nnvector)
 
 ;; Loads extension
-(dynamic-load "gauche-sdl")
+(dynamic-load "nnvector")
 
-;;for <sdl-palette>
-
-(define-method call-with-iterator ((v <sdl-palette>) proc . opts)
+(define-method call-with-iterator ((v <nnvector>) proc . opts)
   (let-keywords opts ([start #f])
-    (let ([len (slot-ref v 'ncolors)]
-          [i (or start 0)])
+    (let* ([len (slot-ref v 'length)]
+           [i (or start 0)]
+           [ref (let ([type (slot-ref v 'type)])
+                  (cond
+                    [(eq? type nn-u8) nnu8vector-ref]
+                    [(eq? type nn-u16) nnu16vector-ref]
+                    [(eq? type nn-u32) nnu32vector-ref]
+                    [(eq? type nn-s8) nns8vector-ref]
+                    [(eq? type nn-s16) nns16vector-ref]
+                    [(eq? type nn-s32) nns32vector-ref]
+                    [(eq? type nn-boolean) nnbvector-ref]
+                    [else (raise (condition
+                                   (<error> (message "illegal type."))))]))])
       (proc (lambda () (>= i len))
-            (lambda () (begin0 (palette-ref v i)
-                         (inc! i)))))))
+            (lambda () (let ([r (ref v i)])
+                         (inc! i)
+                         r))))))
 
-(define-method call-with-builder ((v <sdl-palette-meta>) proc . opts)
-  (let-keywords opts ((size #f))
-    (if size
-      (let ([v (make-palette size)]
-            [i 0])
-        (proc (lambda (item) (palette-set! v i item) (inc! i))
-              (lambda () v)))
-      (let ([q (make-queue)])
-        (proc (lambda (item) (enqueue! q item))
-              (lambda () (list->palette (dequeue-all! q))))))))
+;;not support call-with-builder
 
-(define-method referencer ((v <sdl-palette>)) palette-ref)
-(define-method modifier ((v <sdl-palette>)) palette-set!)
-(define-method size-of ((v <sdl-palette>)) (slot-ref v 'ncolors))
+(define-method referencer ((v <nnvector>)) nnvector-ref)
+(define-method modifier ((v <nnvector>)) nnvector-set!)
+(define-method size-of ((v <nnvector>)) (slot-ref v 'length))
+
 

@@ -74,7 +74,7 @@ net_type.gen.c net_type.gen.h net_type.gen.stub.header: net_type.scm
 	$(GOSH) -I$(SCRIPTDIR) net_type.scm
 
 #compile net
-gauche-sdl-net.$(SOEXT): $(gauche_sdl_net_SRCS) ../gauche-sdl.$(SOEXT)
+gauche-sdl-net.$(SOEXT): $(gauche_sdl_net_SRCS) ../gauche-sdl.$(SOEXT) ../nnvector.$(SOEXT)
 	$(GAUCHE_PACKAGE) compile --cflags="$(SDL_CFLAGS)" --local=$(LOCAL_PATHS) --verbose --ldflags="$(GSDL_LDFLAGS)" --libs="$(SDL_LIBS) $(gauche_SDL_LIBS)" gauche-sdl-net $(gauche_sdl_net_SRCS)
 
 

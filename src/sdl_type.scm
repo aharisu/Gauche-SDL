@@ -39,11 +39,8 @@
             (lambda () ;;prologue
               (cgen-extern "//sdl header")
               (cgen-extern "#include<SDL/SDL.h>")
-              (cgen-extern "#include\"nnvector.h\"")
               (cgen-extern "")
               (cgen-extern "
-                           struct Scmnnvector;
-
                            typedef struct SDL_AudioSpecWrapperRec {
                             SDL_AudioSpec audio;
                             ScmClosure* callback;
@@ -81,7 +78,6 @@
   '(
     (SDL_AudioSpecWrapper <sdl-audio-spec> #t #f "")
     (SDL_AudioCVT <sdl-audio-cvt> #t #f "")
-    (nnvector <nnvector> #f #f "")
     (SDL_CDtrack <sdl-cd-track> #f #f "")
     (SDL_CD <sdl-cd> #t #f "")
     (SDL_keysym <sdl-keysym> #f #f "")

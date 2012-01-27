@@ -33,12 +33,14 @@
 "
 #include \"gauche-sdl-mixer.h\"
 #include \"../sdl_type.gen.h\"
+#include \"../nnvector_type.gen.h\"
 #include \"mixer_type.gen.h\"
 #include <SDL/SDL_mutex.h>
 "
 
 (include "mixer_type.gen.stub.header")
 (include "../sdl_type.gen.stub.header")
+(include "../nnvector_type.gen.stub.header")
 (include "../macro.stub.header")
 
 "

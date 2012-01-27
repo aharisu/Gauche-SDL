@@ -33,11 +33,13 @@
 "
 #include \"gauche-sdl-net.h\"
 #include \"../sdl_type.gen.h\"
+#include \"../nnvector_type.gen.h\"
 #include \"net_type.gen.h\"
 "
 
 (include "net_type.gen.stub.header")
 (include "../sdl_type.gen.stub.header")
+(include "../nnvector_type.gen.stub.header")
 (include "../macro.stub.header")
 
 
