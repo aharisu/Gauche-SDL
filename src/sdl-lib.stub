@@ -2132,28 +2132,48 @@ static void thread_entry(void* data)
   (SDL_Delay ms))
 
 "
-typedef struct TimerParamRec {
-ScmObj callback;
-ScmObj param;
-int first_callP;
-}TimerParam;
-
 static ScmVM* Scm_TimerVM;
+
+static ScmObj timer_entry(SDL_TimerWrapper* p, Uint32 interval)
+{
+  ScmVM* vm = Scm_TimerVM;
+  ScmObj ret = SCM_UNDEFINED;
+
+  SCM_UNWIND_PROTECT {
+    ret  = (SCM_PROCEDURE_REQUIRED(p->fn) == 1) ?
+      Scm_ApplyRec1(SCM_OBJ(p->fn), 
+                     Scm_MakeIntegerFromUI(interval)) :
+      Scm_ApplyRec2(SCM_OBJ(p->fn), 
+                     Scm_MakeIntegerFromUI(interval),
+                     p->data);
+  } SCM_WHEN_ERROR {
+    ScmObj exc;
+    switch(vm->escapeReason) {
+    case SCM_VM_ESCAPE_CONT:
+      vm->resultException = 
+        Scm_MakeError(SCM_MAKE_STR(\"stale continuation thrown\"));
+      break;
+    case SCM_VM_ESCAPE_ERROR:
+      exc = Scm_MakeThreadException(SCM_CLASS_UNCAUGHT_EXCEPTION, vm);
+      SCM_THREAD_EXCEPTION(exc)->data = SCM_OBJ(vm->escapeData[1]);
+      break;
+    default:
+      Scm_Panic(\"unknown escape\");
+    }
+  } SCM_END_PROTECT;
+
+  return ret;
+}
 "
+
 (define-cfn sdl_timer_callback (interval::Uint32 param::void*) :: Uint32
-  (let* ([p :: TimerParam* (cast TimerParam* param)])
-    (when (@ p->first-call?)
-      (Scm_AttachVM Scm_TimerVM)
-      (set! (@ p->first-call?) 0))
-    (return (unboxing (?: (== 1 (SCM_PROCEDURE_REQUIRED (@ p->callback)))
-                          (Scm_ApplyRec1
-                            (@ p->callback)
-                            (boxing interval <uint32>))
-                          (Scm_ApplyRec2
-                            (@ p->callback)
-                            (boxing interval <uint32>)
-                            (@ p->param)))
-                      <uint32>))))
+  (let* ([p :: SDL_TimerWrapper* (cast SDL_TimerWrapper* param)])
+    (unless (Scm_VM)
+      (Scm_AttachVM Scm_TimerVM))
+    (let* ([ret :: ScmObj (timer_entry p interval)])
+      (return (?: (undefined? ret)
+                  0
+                  (unboxing ret <uint32>))))))
 
 ;;;;;
 ;; Add a new timer to the pool of timers already running.
@@ -2163,20 +2183,21 @@ static ScmVM* Scm_TimerVM;
   (when (zero? Scm_TimerVM)
     (set! Scm_TimerVM (Scm_NewVM (Scm_VM) (boxing "timer" <const-cstring>))))
   (check-func-require callback 2 param)
-  (let* ([p :: TimerParam* (SCM_NEW TimerParam)])
-    (set! (@ p->callback) (SCM_OBJ callback))
-    (set! (@ p->param) param)
-    (set! (@ p->first-call?) 1)
+  (let* ([p :: SDL_TimerWrapper* (SCM_NEW SDL_TimerWrapper)])
+    (set! (@ p->fn) callback)
+    (set! (@ p->data) param)
     (let* ([t :: SDL_TimerID (SDL_AddTimer interval sdl_timer_callback p)])
       (if t
-        (result t)
+        (begin
+          (set! (@ p->id) t)
+          (result p))
         (raise-sdl-error sddl-add-timer)))))
 
 ;;;;;
 ;; Remove one of the multiple timers knowing its ID.
 ;; Returns a boolean value indicating success.
 (define-cproc sdl-remove-timer (timer::<sdl-timer>) :: <boolean>
-  (result (SDL_RemoveTimer timer)))
+  (result (SDL_RemoveTimer (@ timer->id))))
 
 
 ;;------------------

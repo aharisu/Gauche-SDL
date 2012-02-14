@@ -64,6 +64,12 @@
                            SDL_Thread* thread;
                            }SDL_ThreadWrapper;
 
+                           typedef struct SDL_TimerWrapperRec {
+                           ScmClosure* fn;
+                           ScmObj data;
+                           SDL_TimerID id;
+                           }SDL_TimerWrapper;
+
                            ")
               (cgen-body "
 
@@ -121,6 +127,6 @@
     (SDL_cond <sdl-cond> #t "SDL_DestroyCond" "")
     (SDL_RWops <sdl-rw-ops> #t  "SDL_RWclose SDL_FreeRW" "")
     (SDL_ThreadWrapper <sdl-thread> #t #f "")
-    (SDL_TimerID <sdl-timer> #f "" "")
+    (SDL_TimerWrapper <sdl-timer> #t "" "")
     (SDL_Cursor <sdl-cursor> #t "SDL_FreeCursor" "")
     ))
