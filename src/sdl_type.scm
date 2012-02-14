@@ -57,6 +57,13 @@
                             ScmObj data;
                            }SDL_RWopsWrapper;
 
+                           typedef struct SDL_ThreadWrapperRec {
+                           ScmClosure* fn;
+                           ScmObj data;
+                           ScmVM* vm;
+                           SDL_Thread* thread;
+                           }SDL_ThreadWrapper;
+
                            ")
               (cgen-body "
 
@@ -113,7 +120,7 @@
     (SDL_sem <sdl-semaphore> #t "SDL_DestroySemaphore" "")
     (SDL_cond <sdl-cond> #t "SDL_DestroyCond" "")
     (SDL_RWops <sdl-rw-ops> #t  "SDL_RWclose SDL_FreeRW" "")
-    (SDL_Thread <sdl-thread> #t #f "")
+    (SDL_ThreadWrapper <sdl-thread> #t #f "")
     (SDL_TimerID <sdl-timer> #f "" "")
     (SDL_Cursor <sdl-cursor> #t "SDL_FreeCursor" "")
     ))

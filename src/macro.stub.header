@@ -228,6 +228,8 @@ typedef double _double_t;
 (define-cise-expr (zero? num)
   `(== ,num 0))
 
+(define-cise-expr (undefined? obj)
+  `(SCM_UNDEFINED? ,obj))
 
 (define-cise-expr (to-c-type sym-type)
   (let ([type (cgen-type-from-name sym-type)])

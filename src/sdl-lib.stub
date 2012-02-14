@@ -2029,48 +2029,91 @@ ScmVM* Scm_AudioVM;
 ;;------------------
 
 "
-typedef struct ThreadDataRec {
-ScmClosure* fn;
-ScmObj data;
-ScmVM* vm;
-}ThreadData;
+static void thread_cleanup(void* data)
+{
+  ScmVM* vm = SCM_VM(data);
+  ScmObj exc;
+
+  if(pthread_mutex_lock(&vm->vmlock) == EDEADLK) {
+    Scm_Panic(\"dead lock in vm_cleanup.\");
+  }
+  vm->state = SCM_VM_TERMINATED;
+  if(vm->canceller) {
+    exc = Scm_MakeThreadException(SCM_CLASS_TERMINATED_THREAD_EXCEPTION, vm);
+    SCM_THREAD_EXCEPTION(exc)->data = SCM_OBJ(vm->canceller);
+    vm->resultException = exc;
+  }
+  pthread_cond_broadcast(&vm->cond);
+  pthread_mutex_unlock(&vm->vmlock);
+}
+
+static void thread_entry(void* data)
+{
+  SDL_ThreadWrapper* p = (SDL_ThreadWrapper*) data;
+  ScmVM* vm = p->vm;
+  pthread_cleanup_push(thread_cleanup, vm);
+  if(Scm_AttachVM(vm) == FALSE) {
+    vm->resultException = 
+      Scm_MakeError(SCM_MAKE_STR(\"thread failed\"));
+  } else {
+    SCM_UNWIND_PROTECT {
+      vm->result = (SCM_PROCEDURE_REQUIRED(p->fn) == 0) ?
+        Scm_ApplyRec0(SCM_OBJ(p->fn)) : Scm_ApplyRec1(SCM_OBJ(p->fn), p->data);
+    } SCM_WHEN_ERROR {
+      ScmObj exc;
+      switch(vm->escapeReason) {
+      case SCM_VM_ESCAPE_CONT:
+        vm->resultException = 
+          Scm_MakeError(SCM_MAKE_STR(\"stale continuation thrown\"));
+        break;
+      case SCM_VM_ESCAPE_ERROR:
+        exc = Scm_MakeThreadException(SCM_CLASS_UNCAUGHT_EXCEPTION, vm);
+        SCM_THREAD_EXCEPTION(exc)->data = SCM_OBJ(vm->escapeData[1]);
+        break;
+      default:
+        Scm_Panic(\"unknown escape\");
+      }
+    } SCM_END_PROTECT;
+  }
+  pthread_cleanup_pop(TRUE);
+}
 "
 
 (define-cfn thread-callback (data::void*) :: int
-  (let* ([p :: ThreadData* (cast ThreadData* data)])
-    (Scm_AttachVM (@ p->vm))
-    (let* ([ret :: int (unboxing
-                         (?: (== 0 (SCM_PROCEDURE_REQUIRED (@ p->fn)))
-                             (Scm_ApplyRec0 (SCM_OBJ (@ p->fn)))
-                             (Scm_ApplyRec1 (SCM_OBJ (@ p->fn))
-                                            (@ p->data)))
-                         <int>)])
-      (return ret))))
+  (let* ([p :: SDL_ThreadWrapper* (cast SDL_ThreadWrapper* data)])
+    (thread_entry data)
+    (return (?: (undefined? (@ p->vm->result))
+                0
+                (unboxing (@ p->vm->result) <int>)))))
 
 (define-cproc sdl-create-thread (fn::<closure> :optional data::<top>) :: <sdl-thread>
-  (let* ([d :: ThreadData* (SCM_NEW ThreadData)])
+  (let* ([d :: SDL_ThreadWrapper* (SCM_NEW SDL_ThreadWrapper)])
     (set! (@ d->fn) fn)
     (set! (@ d->data) data)
     (set! (@ d->vm) (Scm_NewVM (Scm_VM) (boxing "sdl-thread" <const-cstring>)))
-    (result (SDL_CreateThread thread-callback d))))
+    (SCM_INTERNAL_MUTEX_LOCK (@ d->vm->vmlock))
+    (set! (@ d->vm->state) SCM_VM_RUNNABLE)
+    (set! (@ d->thread) (SDL_CreateThread thread-callback d))
+    (SCM_INTERNAL_MUTEX_UNLOCK (@ d->vm->vmlock))
+    (result d)))
 
 (define-cproc sdl-thread-id () :: <uint32>
   (result (SDL_ThreadID)))
 
 (define-cproc sdl-get-thread-id (thread::<sdl-thread>) :: <uint32>
   (ENSURE_NOT_NULL thread)
-  (result (SDL_GetThreadID thread)))
+  (result (SDL_GetThreadID (@ thread->thread))))
 
 (define-cproc sdl-wait-thread (thread::<sdl-thread>) :: <int>
   (let* ([status :: int 0])
   (when thread
-    (SDL_WaitThread thread (& status))
+    (SDL_WaitThread (@ thread->thread) (& status))
     (set! (-> (SCM_FOREIGN_POINTER thread-scm) ptr) 0))
   (result status)))
 
 (define-cproc sdl-kill-thread (thread::<sdl-thread>) :: <void>
   (when thread
-    (SDL_KillThread thread)
+    (SDL_KillThread (@ thread->thread))
     (set! (-> (SCM_FOREIGN_POINTER thread-scm) ptr) 0)))
 
 ;;------------------
