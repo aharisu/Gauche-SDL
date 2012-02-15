@@ -61,6 +61,25 @@ SCM_DEFINE_BASE_CLASS(Scm_SDLErrorClass, ScmSDLError,
     condition_print, NULL, NULL,
     condition_allocate, condition_cpl);
 
+static ScmHashCore avoid_gc_table;
+static ScmInternalMutex avoid_gc_mutex;
+
+void avoid_gc_register(intptr_t ptr)
+{
+  ScmDictEntry* e;
+  SCM_INTERNAL_MUTEX_LOCK(avoid_gc_mutex);
+  e = Scm_HashCoreSearch(&avoid_gc_table, ptr, SCM_DICT_CREATE);
+  SCM_DICT_SET_VALUE(e, SCM_TRUE);
+  SCM_INTERNAL_MUTEX_UNLOCK(avoid_gc_mutex);
+}
+
+void avoid_gc_unregister(intptr_t ptr)
+{
+  SCM_INTERNAL_MUTEX_LOCK(avoid_gc_mutex);
+  (void)Scm_HashCoreSearch(&avoid_gc_table, ptr, SCM_DICT_DELETE);
+  SCM_INTERNAL_MUTEX_UNLOCK(avoid_gc_mutex);
+}
+
 /*
 * Module initialization function.
 */
@@ -70,6 +89,9 @@ extern void Scm_Init_sdl_type(ScmModule*);
 void Scm_Init_gauche_sdl(void)
 {
   ScmModule *mod; 
+
+  Scm_HashCoreInitSimple(&avoid_gc_table, SCM_HASH_EQ, 8, NULL);
+  SCM_INTERNAL_MUTEX_INIT(avoid_gc_mutex);
 
   /* Register this DSO to Gauche */ 
   SCM_INIT_EXTENSION(gauche_sdl); 

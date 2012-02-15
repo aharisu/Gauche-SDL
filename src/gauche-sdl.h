@@ -45,6 +45,9 @@ typedef struct ScmSDLErrorRec {
 SCM_CLASS_DECL(Scm_SDLErrorClass);
 #define SCM_CLASS_SDL_ERROR (&Scm_SDLErrorClass)
 
+void avoid_gc_register(intptr_t ptr);
+void avoid_gc_unregister(intptr_t ptr);
+
 #define ENSURE_NOT_NULL(data) \
 if(!(data)) Scm_Error("already been released. object is invalied.");
 

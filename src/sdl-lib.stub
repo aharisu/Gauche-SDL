@@ -2031,7 +2031,8 @@ ScmVM* Scm_AudioVM;
 "
 static void thread_cleanup(void* data)
 {
-  ScmVM* vm = SCM_VM(data);
+  SDL_ThreadWrapper* p = (SDL_ThreadWrapper*) data;
+  ScmVM* vm = p->vm;
   ScmObj exc;
 
   if(pthread_mutex_lock(&vm->vmlock) == EDEADLK) {
@@ -2043,6 +2044,7 @@ static void thread_cleanup(void* data)
     SCM_THREAD_EXCEPTION(exc)->data = SCM_OBJ(vm->canceller);
     vm->resultException = exc;
   }
+  avoid_gc_unregister((intptr_t)p);
   pthread_cond_broadcast(&vm->cond);
   pthread_mutex_unlock(&vm->vmlock);
 }
@@ -2051,7 +2053,7 @@ static void thread_entry(void* data)
 {
   SDL_ThreadWrapper* p = (SDL_ThreadWrapper*) data;
   ScmVM* vm = p->vm;
-  pthread_cleanup_push(thread_cleanup, vm);
+  pthread_cleanup_push(thread_cleanup, p);
   if(Scm_AttachVM(vm) == FALSE) {
     vm->resultException = 
       Scm_MakeError(SCM_MAKE_STR(\"thread failed\"));
@@ -2086,7 +2088,7 @@ static void thread_entry(void* data)
                 0
                 (unboxing (@ p->vm->result) <int>)))))
 
-(define-cproc sdl-create-thread (fn::<closure> :optional data::<top>) :: <sdl-thread>
+(define-cproc sdl-create-thread (fn::<closure> :optional data::<top>) :: <top>
   (let* ([d :: SDL_ThreadWrapper* (SCM_NEW SDL_ThreadWrapper)])
     (set! (@ d->fn) fn)
     (set! (@ d->data) data)
@@ -2095,7 +2097,11 @@ static void thread_entry(void* data)
     (set! (@ d->vm->state) SCM_VM_RUNNABLE)
     (set! (@ d->thread) (SDL_CreateThread thread-callback d))
     (SCM_INTERNAL_MUTEX_UNLOCK (@ d->vm->vmlock))
-    (result d)))
+    (if (@ d->thread) 
+      (begin
+        (avoid_gc_register (cast intptr_t d))
+        (result (boxing d <sdl-thread>)))
+      (result (boxing 0 <boolean>)))))
 
 (define-cproc sdl-thread-id () :: <uint32>
   (result (SDL_ThreadID)))
@@ -2186,18 +2192,19 @@ static ScmObj timer_entry(SDL_TimerWrapper* p, Uint32 interval)
   (let* ([p :: SDL_TimerWrapper* (SCM_NEW SDL_TimerWrapper)])
     (set! (@ p->fn) callback)
     (set! (@ p->data) param)
-    (let* ([t :: SDL_TimerID (SDL_AddTimer interval sdl_timer_callback p)])
-      (if t
-        (begin
-          (set! (@ p->id) t)
-          (result p))
-        (raise-sdl-error sddl-add-timer)))))
+    (set! (@ p->id) (SDL_AddTimer interval sdl_timer_callback p))
+    (if (@ p->id)
+      (begin
+        (avoid_gc_register (cast intptr_t p))
+        (result p))
+      (raise-sdl-error sddl-add-timer))))
 
 ;;;;;
 ;; Remove one of the multiple timers knowing its ID.
 ;; Returns a boolean value indicating success.
 (define-cproc sdl-remove-timer (timer::<sdl-timer>) :: <boolean>
-  (result (SDL_RemoveTimer (@ timer->id))))
+  (result (SDL_RemoveTimer (@ timer->id)))
+  (avoid_gc_unregister (cast intptr_t timer)))
 
 
 ;;------------------
