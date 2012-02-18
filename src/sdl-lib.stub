@@ -264,18 +264,21 @@ typedef struct{
 ScmObj vector;
 ScmClosure* callback;
 ScmObj userdata;
-int first_callP;
 }OpenAudioData;
+
+//avoid gc
+static OpenAudioData* open_audio_data;
 
 ScmVM* Scm_AudioVM;
 "
 
+;;
+
 ;; is mean the len?
 (define-cfn sdl_audio_spec_callback (userdata::void* stream::Uint8* len::int) ::void
   (let* ([data::OpenAudioData* (cast OpenAudioData* userdata)])
-    (when (@ data->first-call?)
-      (Scm_AttachVM Scm_AudioVM)
-      (set! (@ data->first-call?) 0))
+    (unless (Scm_VM)
+      (Scm_AttachVM Scm_AudioVM))
     (SET_NNVECTOR_DATA (@ data->vector) stream TYPE_U8 len)
     (if (== 1 (SCM_PROCEDURE_REQUIRED (@ data->callback)))
       (Scm_ApplyRec1 (SCM_OBJ (@ data->callback))
@@ -309,7 +312,6 @@ ScmVM* Scm_AudioVM;
     (set! (@ data->vector) (boxing vec <nnvector>))
     (set! (@ data->callback) (@ desired->callback))
     (set! (@ data->userdata) (@ desired->userdata))
-    (set! (@ data->first-call?) 1)
     ;;set to desired
     (set! (@ desired->audio.callback) sdl_audio_spec_callback)
     (set! (@ desired->audio.userdata) data))
@@ -318,10 +320,12 @@ ScmVM* Scm_AudioVM;
     (begin
       (if (< (SDL_OpenAudio (& (@ desired->audio)) 0) 0)
         (raise-sdl-error sdl-open-audio))
+      (set! open_audio_data (@ desired->audio.userdata))
       (result (boxing 1 <boolean>)))
     (let* ([obtained::SDL_AudioSpecWrapper* (SCM_NEW SDL_AudioSpecWrapper)])
       (if (< (SDL_OpenAudio (& (@ desired->audio)) (& (@ obtained->audio))) 0)
         (raise-sdl-error sdl-open-audio))
+      (set! open_audio_data (@ desired->audio.userdata))
       (set! (@ obtained->callback) (@ desired->callback))
       (set! (@ obtained->userdata) (@ desired->userdata))
       (result (boxing obtained <sdl-audio-spec>)))))
@@ -425,7 +429,8 @@ ScmVM* Scm_AudioVM;
 ;;;;;
 ;; This function shuts down audio processing and closes the audio device.
 (define-cproc sdl-close-audio () ::<void>
-  (SDL_CloseAudio))
+  (SDL_CloseAudio)
+  (set! open_audio_data NULL))
 
 
 ;;------------------
