@@ -21,6 +21,7 @@ GAUCHE_PKGLIBDIR  = "$(DESTDIR)@GAUCHE_PKGLIBDIR@"
 
 STUBDIR=@STUBDIR@
 SCRIPTDIR=@SCRIPTDIR@
+OUTDIR = "@OUTDIR@"
 GENDOC="@GENDOC@"
 
 
@@ -93,4 +94,9 @@ realclean : clean
 maintainer-clean : clean
 	rm -rf $(CONFIG_GENERATED)
 	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) maintainer-clean); fi
+
+collect :
+	@mkdir -p $(OUTDIR)/scm/sdl
+	@if test "$(SCMFILES)" != ""; then (cp -p -u $(SCMFILES) $(OUTDIR)/scm/sdl/); fi
+	@if test X$(HAVE_SDL_NET) != X; then (cd net; $(MAKE) collect); fi
 

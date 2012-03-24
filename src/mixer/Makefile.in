@@ -17,6 +17,7 @@ GAUCHE_PACKAGE = "@GAUCHE_PACKAGE@"
 INSTALL        = "@GAUCHE_INSTALL@" -C
 
 SCRIPTDIR = "@SCRIPTDIR@"
+OUTDIR = "@OUTDIR@"
 GENSTUB = "@GENSTUB@"
 
 # Other parameters
@@ -92,4 +93,8 @@ realclean : clean
 
 maintainer-clean : clean
 	rm -rf $(CONFIG_GENERATED) configure VERSION
+
+collect :
+	@if test "$(HEADERS)" != ""; then (cp -p -u $(HEADERS) $(OUTDIR)/header/); fi
+	@if test "$(ARCHFILES)" != ""; then (cp -p -u $(ARCHFILES) $(OUTDIR)/dll/); fi
 

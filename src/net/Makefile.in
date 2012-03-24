@@ -17,6 +17,7 @@ GAUCHE_PACKAGE = "@GAUCHE_PACKAGE@"
 INSTALL        = "@GAUCHE_INSTALL@" -C
 
 SCRIPTDIR = "@SCRIPTDIR@"
+OUTDIR = "@OUTDIR@"
 GENSTUB = "@GENSTUB@"
 
 # Other parameters
@@ -82,7 +83,7 @@ sdl-netextlib.stub: $(netext_STUB_TYPE_HDRS)
 
 #compile net-ext
 gauche-sdl-netext.$(SOEXT): $(gauche_sdl_netext_SRCS) ../gauche-sdl.$(SOEXT)
-	$(GAUCHE_PACKAGE) compile --local=$(LOCAL_PATHS) --verbose --ldflags="$(LDFLAGS) $(SDL_LDFLAGS)" --libs="$(SDL_LIBS) $(gauche_SDL_LIBS)" gauche-sdl-netext $(gauche_sdl_netext_SRCS)
+	$(GAUCHE_PACKAGE) compile --cflags="$(SDL_CFLAGS)" --local=$(LOCAL_PATHS) --verbose --ldflags="$(GSDL_LDFLAGS)" --libs="$(SDL_LIBS) $(gauche_SDL_LIBS)" gauche-sdl-netext $(gauche_sdl_netext_SRCS)
 
 test : all
 	@rm -f test.log
@@ -105,4 +106,8 @@ realclean : clean
 
 maintainer-clean : clean
 	rm -rf $(CONFIG_GENERATED)
+
+collect :
+	@if test "$(HEADERS)" != ""; then (cp -p -u $(HEADERS) $(OUTDIR)/header/); fi
+	@if test "$(ARCHFILES)" != ""; then (cp -p -u $(ARCHFILES) $(OUTDIR)/dll/); fi
 

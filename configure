@@ -595,6 +595,7 @@ ac_includes_default="\
 
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+OUTDIR
 GENDOC
 GENSTUB
 SCRIPTDIR
@@ -3727,6 +3728,9 @@ SCRIPTDIR="`$PWD`/script"
 GENSTUB="$SCRIPTDIR/genstub.scm"
 
 GENDOC="$SCRIPTDIR/gendoc.scm"
+
+
+OUTDIR="`$PWD`/out"
 
 
 

@@ -53,7 +53,7 @@
 ;; @param bs the second surface to check
 ;; @param bx the top-left X-coordinate of surface @a SB
 ;; @param by the top-left Y-coordinate of surface @a SB
-;; @param skip how many pixels the looping test should skip.
+;; @param (skip 4) how many pixels the looping test should skip.
 ;;             1 is a truly perfect pixel test, but a value
 ;;             of 4 should be fine.
 ;;             this parameter is here to speed up the test at

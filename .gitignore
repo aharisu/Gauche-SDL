@@ -6,6 +6,7 @@
 *.so
 *.dll
 *.gen.*
+*lib.c
 Makefile
 
 /src/sdl-lib.c
@@ -13,3 +14,16 @@ Makefile
 
 /VERSION
 /gauche-sdl.gpd
+
+/lib/sdl.scm
+/lib/sdl/ttf.scm
+/lib/sdl/net.scm
+/lib/sdl/gen-colors.scm
+/lib/sdl/gfx.scm
+/lib/sdl/image.scm
+/lib/sdl/mixer.scm
+/lib/sdl/collide.scm
+/out/binary
+/out/dll
+/out/header
+/out/scm
