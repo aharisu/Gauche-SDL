@@ -2040,9 +2040,7 @@ static void thread_cleanup(void* data)
   ScmVM* vm = p->vm;
   ScmObj exc;
 
-  if(pthread_mutex_lock(&vm->vmlock) == EDEADLK) {
-    Scm_Panic(\"dead lock in vm_cleanup.\");
-  }
+  SCM_INTERNAL_MUTEX_LOCK(vm->vmlock);
   vm->state = SCM_VM_TERMINATED;
   if(vm->canceller) {
     exc = Scm_MakeThreadException(SCM_CLASS_TERMINATED_THREAD_EXCEPTION, vm);
@@ -2050,19 +2048,23 @@ static void thread_cleanup(void* data)
     vm->resultException = exc;
   }
   avoid_gc_unregister((intptr_t)p);
-  pthread_cond_broadcast(&vm->cond);
-  pthread_mutex_unlock(&vm->vmlock);
+
+  SCM_INTERNAL_COND_BROADCAST(vm->cond);
+  SCM_INTERNAL_MUTEX_UNLOCK(vm->vmlock);
 }
 
 static void thread_entry(void* data)
 {
   SDL_ThreadWrapper* p = (SDL_ThreadWrapper*) data;
   ScmVM* vm = p->vm;
-  pthread_cleanup_push(thread_cleanup, p);
+
   if(Scm_AttachVM(vm) == FALSE) {
     vm->resultException = 
       Scm_MakeError(SCM_MAKE_STR(\"thread failed\"));
+    thread_cleanup(p);
   } else {
+    SCM_INTERNAL_THREAD_CLEANUP_PUSH(thread_cleanup, p);
+
     SCM_UNWIND_PROTECT {
       vm->result = (SCM_PROCEDURE_REQUIRED(p->fn) == 0) ?
         Scm_ApplyRec0(SCM_OBJ(p->fn)) : Scm_ApplyRec1(SCM_OBJ(p->fn), p->data);
@@ -2081,8 +2083,9 @@ static void thread_entry(void* data)
         Scm_Panic(\"unknown escape\");
       }
     } SCM_END_PROTECT;
+
+    SCM_INTERNAL_THREAD_CLEANUP_POP();
   }
-  pthread_cleanup_pop(TRUE);
 }
 "
 
